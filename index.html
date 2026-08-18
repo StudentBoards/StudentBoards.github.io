@@ -292,7 +292,7 @@ button:focus-visible{outline:2.5px solid var(--amber);outline-offset:2px}
 
 <header>
   <div class="mark">studentboards<span>.dev</span></div>
-  <div class="tag">MAX V PROGRAMMER</div>
+  <div class="tag">BOARD PROGRAMMER</div>
 </header>
 
 <h1>Program your board<br>from <em>this page</em>.</h1>
@@ -320,7 +320,7 @@ your board is detected, then drop your file. Nothing to install.</p>
 <div class="stages">
   <div class="stage" id="st1" data-on="1">
     <div class="srow"><div class="snum">1</div><div class="slabel">Connect</div></div>
-    <div class="sbody" id="st1b">Plug the Pico programmer into USB.</div>
+    <div class="sbody" id="st1b">Plug the programmer into USB, then pick <strong>Board Programmer</strong> from the list.</div>
     <button id="btnConnect">Connect</button>
   </div>
   <div class="stage" id="st2">
@@ -699,9 +699,26 @@ function parseAvrId(line) {
    Connection
    ------------------------------------------------------------------ */
 
-async function connect() {
+/*
+ * USB vendor ID for Raspberry Pi, covering both the RP2040 and RP2350
+ * Picos. Filtering the picker on it means a student sees only the
+ * programmer instead of every COM port on the machine — which is the
+ * real fix for "which one is it?", regardless of what name the operating
+ * system decides to show.
+ */
+const PICO_VID = 0x2E8A;
+
+async function connect(showAllPorts) {
   try {
-    port = await navigator.serial.requestPort();
+    /* Filtered by default. `showAllPorts` is the escape hatch for a clone
+     * board with a different vendor ID, offered only after a filtered
+     * attempt finds nothing. */
+    port = showAllPorts
+      ? await navigator.serial.requestPort()
+      : await navigator.serial.requestPort({
+          filters: [{ usbVendorId: PICO_VID }]
+        });
+
     await port.open({ baudRate: 115200 });
     reader = port.readable.getReader();
     writer = port.writable.getWriter();
@@ -711,8 +728,10 @@ async function connect() {
     const pong = await ask('PING', 4000);
     if (!pong || !pong.startsWith('PONG')) {
       verdict('fail', 'Wrong device',
-        "That serial port didn't answer as a programmer. Disconnect, then " +
-        'pick the port named <code>Pico</code> or <code>USB Serial Device</code>.');
+        "That port didn't answer as a programmer. Disconnect, then pick the " +
+        'one named <strong>Board Programmer</strong>. If nothing by that name ' +
+        'appears, the Pico may still be running different firmware &mdash; ' +
+        'reflash it with the <code>.uf2</code>.');
       await disconnect();
       return;
     }
@@ -727,7 +746,22 @@ async function connect() {
     stage(1, true); stage(2, true);
     hideVerdict();
   } catch (e) {
-    if (e.name !== 'NotFoundError') log('Connect failed: ' + e.message, 'er');
+    if (e.name === 'NotFoundError') {
+      /* Fires both when the picker was cancelled and when nothing matched
+       * the filter. We cannot tell those apart, so offer the wider list
+       * rather than guessing. */
+      if (!showAllPorts) {
+        verdict('warn', 'No programmer in the list?',
+          'The picker only shows Raspberry&nbsp;Pi devices. If your programmer ' +
+          "didn't appear, it may not be plugged in, or it may be a clone with a " +
+          'different USB ID. ' +
+          '<button id="btnShowAll" style="margin-top:9px">Show all ports</button>');
+        const b = $('btnShowAll');
+        if (b) b.onclick = () => { hideVerdict(); connect(true); };
+      }
+      return;
+    }
+    log('Connect failed: ' + e.message, 'er');
   }
 }
 
@@ -735,7 +769,7 @@ async function disconnect() {
   $('btnId').disabled = true;
   setDropEnabled(false);
   $('btnConnect').textContent = 'Connect';
-  $('st1b').textContent = 'Plug the Pico programmer into USB.';
+  $('st1b').innerHTML = 'Plug the programmer into USB, then pick <strong>Board Programmer</strong> from the list.';
   $('st2b').textContent = mode.idHint;
   stage(2, false); stage(3, false);
   try {
@@ -1140,7 +1174,7 @@ if (!('serial' in navigator)) {
   $('btnConnect').disabled = true;
 }
 
-$('btnConnect').onclick = () => port ? disconnect() : connect();
+$('btnConnect').onclick = () => port ? disconnect() : connect(false);
 $('btnId').onclick = readId;
 $('btnClear').onclick = () => { $('log').innerHTML = ''; };
 $('btnFuseClose').onclick = () => { $('fuse').className = 'fuse'; };
