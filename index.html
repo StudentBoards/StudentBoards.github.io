@@ -1,0 +1,991 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Program your CPLD — studentboards.dev</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+:root{
+  --paper:#EDF0EF;
+  --surface:#FFFFFF;
+  --ink:#0F1A17;
+  --muted:#66756F;
+  --rule:#CBD4D0;
+  --teal:#0E5C4E;
+  --teal-lift:#127966;
+  --amber:#E8A33D;
+  --alert:#A8321F;
+  --mono:'IBM Plex Mono',ui-monospace,monospace;
+  --sans:'IBM Plex Sans',system-ui,sans-serif;
+}
+
+*{box-sizing:border-box;margin:0;padding:0}
+
+body{
+  background:var(--paper);
+  color:var(--ink);
+  font-family:var(--sans);
+  font-size:15px;
+  line-height:1.55;
+  padding:0 20px 80px;
+  -webkit-font-smoothing:antialiased;
+}
+
+.wrap{max-width:860px;margin:0 auto}
+
+/* ---- mode switch: two distinct board types, so a segmented control
+       makes the choice explicit rather than inferring it from the file ---- */
+.modes{
+  display:flex;border:1.5px solid var(--ink);margin:0 0 26px;
+  background:var(--surface);
+}
+.modes button{
+  flex:1;background:var(--surface);color:var(--muted);
+  padding:12px 10px;border:none;border-right:1.5px solid var(--rule);
+  text-transform:none;letter-spacing:0;font-size:13px;
+  display:flex;flex-direction:column;gap:2px;align-items:flex-start;
+}
+.modes button:last-child{border-right:none}
+.modes button:hover:not(.on){background:#F5FAF8;color:var(--ink)}
+.modes button.on{background:var(--ink);color:var(--paper)}
+.modes b{
+  font-family:var(--mono);font-size:12.5px;font-weight:600;
+  letter-spacing:.06em;text-transform:uppercase;
+}
+.modes span{font-family:var(--sans);font-size:11.5px;opacity:.72}
+
+/* ---- masthead ---- */
+header{
+  display:flex;align-items:baseline;gap:14px;flex-wrap:wrap;
+  padding:26px 0 18px;border-bottom:1.5px solid var(--ink);
+}
+.mark{
+  font-family:var(--mono);font-weight:600;font-size:13px;
+  letter-spacing:.14em;text-transform:uppercase;
+}
+.mark span{color:var(--muted)}
+.tag{
+  font-family:var(--mono);font-size:11.5px;color:var(--muted);
+  letter-spacing:.06em;margin-left:auto;
+}
+
+h1{
+  font-family:var(--mono);
+  font-weight:500;
+  font-size:clamp(28px,5.2vw,44px);
+  letter-spacing:-.025em;
+  line-height:1.08;
+  margin:34px 0 10px;
+}
+h1 em{font-style:normal;color:var(--teal)}
+.lede{max-width:52ch;color:var(--muted);margin-bottom:34px}
+
+/* ---- stage strip: Connect -> Detect -> Program is a real sequence,
+       so the numbering encodes order the student must follow ---- */
+.stages{
+  display:grid;grid-template-columns:repeat(3,1fr);gap:1.5px;
+  background:var(--rule);border:1.5px solid var(--ink);
+  margin-bottom:26px;
+}
+.stage{
+  background:var(--surface);padding:16px 16px 18px;
+  display:flex;flex-direction:column;gap:8px;min-height:132px;
+  transition:background .25s;
+}
+.stage[data-on="1"]{background:#F7FBF9}
+.stage[data-on="1"] .snum{background:var(--teal);color:#fff;border-color:var(--teal)}
+.srow{display:flex;align-items:center;gap:9px}
+.snum{
+  font-family:var(--mono);font-size:11px;font-weight:600;
+  width:21px;height:21px;flex:none;border:1.5px solid var(--rule);
+  display:grid;place-items:center;color:var(--muted);
+  transition:all .25s;
+}
+.slabel{
+  font-family:var(--mono);font-size:11.5px;font-weight:600;
+  letter-spacing:.11em;text-transform:uppercase;
+}
+.sbody{font-size:13.5px;color:var(--muted);flex:1}
+.sbody strong{color:var(--ink);font-weight:600}
+.sbody code{font-family:var(--mono);font-size:12.5px;color:var(--teal)}
+
+button{
+  font-family:var(--mono);font-size:12.5px;font-weight:600;
+  letter-spacing:.05em;text-transform:uppercase;
+  background:var(--ink);color:var(--paper);
+  border:none;padding:9px 15px;cursor:pointer;
+  align-self:flex-start;transition:background .18s;
+}
+button:hover:not(:disabled){background:var(--teal)}
+button:disabled{background:var(--rule);color:#93A09B;cursor:not-allowed}
+button:focus-visible{outline:2.5px solid var(--amber);outline-offset:2px}
+
+/* ---- drop target ---- */
+.drop{
+  border:1.5px dashed var(--rule);background:var(--surface);
+  padding:30px 22px;text-align:center;cursor:pointer;
+  transition:all .18s;margin-bottom:26px;
+}
+.drop:hover:not(.off),.drop.over{border-color:var(--teal);background:#F5FAF8}
+.drop.over{border-style:solid}
+.drop.off{opacity:.42;cursor:not-allowed}
+.drop:focus-visible{outline:2.5px solid var(--amber);outline-offset:3px}
+.drop-h{font-family:var(--mono);font-size:14px;font-weight:500;margin-bottom:5px}
+.drop-s{font-size:13px;color:var(--muted)}
+
+/* ---- signature: the shift register.
+   Bits streaming through a TAP is what this page actually does — a
+   generic progress bar would say nothing about the subject. ---- */
+.reg{
+  border:1.5px solid var(--ink);background:var(--surface);
+  margin-bottom:26px;display:none;
+}
+.reg.show{display:block}
+.reg-top{
+  display:flex;justify-content:space-between;align-items:center;
+  padding:11px 15px;border-bottom:1.5px solid var(--rule);
+  font-family:var(--mono);font-size:11px;letter-spacing:.11em;
+  text-transform:uppercase;
+}
+.reg-top b{font-weight:600}
+.reg-state{color:var(--teal)}
+.cells{
+  display:flex;gap:2.5px;padding:17px 15px;overflow:hidden;
+  justify-content:flex-start;
+}
+.cell{
+  width:12px;height:26px;flex:none;background:#E4EAE7;
+  transition:background .1s;
+}
+.cell.hot{background:var(--teal)}
+.cell.edge{background:var(--amber)}
+.reg-foot{
+  display:flex;gap:26px;padding:0 15px 14px;
+  font-family:var(--mono);font-size:11.5px;color:var(--muted);
+}
+.reg-foot b{color:var(--ink);font-weight:600}
+
+.bar{height:3px;background:#E4EAE7;overflow:hidden}
+.bar i{display:block;height:100%;width:0;background:var(--teal);transition:width .18s}
+
+/* ---- verdict ---- */
+.verdict{
+  border:1.5px solid var(--ink);padding:17px 19px;margin-bottom:26px;
+  display:none;background:var(--surface);
+}
+.verdict.show{display:block}
+.verdict.pass{border-left:6px solid var(--teal)}
+.verdict.fail{border-left:6px solid var(--alert)}
+.verdict.warn{border-left:6px solid var(--amber)}
+.v-h{
+  font-family:var(--mono);font-size:12px;font-weight:600;
+  letter-spacing:.11em;text-transform:uppercase;margin-bottom:5px;
+}
+.verdict.pass .v-h{color:var(--teal)}
+.verdict.fail .v-h{color:var(--alert)}
+.verdict.warn .v-h{color:#8A6215}
+.v-b{font-size:13.5px}
+.v-b ul{margin:7px 0 0 17px}
+.v-b li{margin-bottom:3px}
+.v-b code{font-family:var(--mono);font-size:12.5px}
+
+/* ---- log ---- */
+.logwrap{border:1.5px solid var(--rule);background:var(--surface)}
+.logbar{
+  display:flex;justify-content:space-between;align-items:center;
+  padding:9px 14px;border-bottom:1.5px solid var(--rule);
+  font-family:var(--mono);font-size:11px;letter-spacing:.11em;
+  text-transform:uppercase;color:var(--muted);
+}
+.logbar button{
+  background:none;color:var(--muted);padding:2px 6px;font-size:10.5px;
+  border:1px solid var(--rule);
+}
+.logbar button:hover{background:var(--rule);color:var(--ink)}
+.log{
+  font-family:var(--mono);font-size:12px;line-height:1.75;
+  padding:12px 14px;height:190px;overflow-y:auto;white-space:pre-wrap;
+  word-break:break-word;
+}
+.log div{display:flex;gap:10px}
+.log time{color:#A4AFAB;flex:none}
+.log .rx{color:var(--teal)}
+.log .tx{color:var(--muted)}
+.log .er{color:var(--alert)}
+
+.note{
+  margin-top:30px;padding-top:18px;border-top:1.5px solid var(--rule);
+  font-size:13px;color:var(--muted);
+}
+.note h3{
+  font-family:var(--mono);font-size:11.5px;font-weight:600;
+  letter-spacing:.11em;text-transform:uppercase;color:var(--ink);
+  margin-bottom:7px;
+}
+.note p{margin-bottom:9px;max-width:62ch}
+.note code{font-family:var(--mono);font-size:12px;background:#E4EAE7;padding:1px 5px}
+
+.unsupported{
+  border:1.5px solid var(--alert);border-left-width:6px;
+  background:var(--surface);padding:17px 19px;margin-bottom:26px;display:none;
+}
+.unsupported.show{display:block}
+
+@media (max-width:640px){
+  .stages{grid-template-columns:1fr}
+  .stage{min-height:0}
+}
+@media (prefers-reduced-motion:reduce){
+  *{transition:none!important;animation:none!important}
+}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<header>
+  <div class="mark">studentboards<span>.dev</span></div>
+  <div class="tag">MAX V PROGRAMMER</div>
+</header>
+
+<h1>Program your CPLD<br>from <em>this page</em>.</h1>
+<p class="lede">Plug the Pico programmer into USB, connect, then drop your SVF file below.
+Nothing to install.</p>
+
+<div class="unsupported" id="unsup">
+  <div class="v-h" style="color:var(--alert)">Browser not supported</div>
+  <div class="v-b">This page talks to the programmer over Web Serial, which currently works in
+  Chrome, Edge and Opera on desktop. Safari and Firefox can't connect.
+  Open this page in Chrome or Edge to continue.</div>
+</div>
+
+<div class="modes" role="tablist">
+  <button id="mCpld" class="on" role="tab" aria-selected="true">
+    <b>MAX V CPLD</b><span>5M40Z / 5M80Z / 5M160Z &middot; .svf</span>
+  </button>
+  <button id="mAvr" role="tab" aria-selected="false">
+    <b>ATmega32A</b><span>AVR dev board &middot; .hex</span>
+  </button>
+</div>
+
+<div class="stages">
+  <div class="stage" id="st1" data-on="1">
+    <div class="srow"><div class="snum">1</div><div class="slabel">Connect</div></div>
+    <div class="sbody" id="st1b">Plug the programmer into USB.</div>
+    <button id="btnConnect">Connect</button>
+  </div>
+  <div class="stage" id="st2">
+    <div class="srow"><div class="snum">2</div><div class="slabel">Check board</div></div>
+    <div class="sbody" id="st2b">Reads the CPLD's JTAG ID to confirm wiring and power.</div>
+    <button id="btnId" disabled>Read ID</button>
+  </div>
+  <div class="stage" id="st3">
+    <div class="srow"><div class="snum">3</div><div class="slabel">Program</div></div>
+    <div class="sbody" id="st3b">Drop your SVF file below.</div>
+  </div>
+</div>
+
+<div class="drop off" id="drop" tabindex="0" role="button" aria-label="Choose or drop an SVF file">
+  <div class="drop-h" id="dropH">Drop your .svf file here</div>
+  <div class="drop-s" id="dropS">or click to choose &middot; connect the programmer first</div>
+</div>
+<input type="file" id="file" accept=".svf" hidden>
+
+<div class="reg" id="reg">
+  <div class="reg-top">
+    <b>Shift register</b>
+    <span class="reg-state" id="regState">IDLE</span>
+  </div>
+  <div class="cells" id="cells"></div>
+  <div class="reg-foot">
+    <span>Sent <b id="mBytes">0</b></span>
+    <span>Statements <b id="mStmt">0</b></span>
+    <span>Elapsed <b id="mTime">0.0s</b></span>
+  </div>
+  <div class="bar"><i id="bar"></i></div>
+</div>
+
+<div class="verdict" id="verdict">
+  <div class="v-h" id="vh"></div>
+  <div class="v-b" id="vb"></div>
+</div>
+
+<div class="logwrap">
+  <div class="logbar"><span>Serial log</span><button id="btnClear">Clear</button></div>
+  <div class="log" id="log" role="log" aria-live="polite"></div>
+</div>
+
+<div class="note">
+  <h3>Wiring</h3>
+  <p><strong>MAX V CPLD</strong> — Pico pins 4-7:
+  <code>GP2 TCK &middot; GP3 TMS &middot; GP4 TDI &middot; GP5 TDO</code>, ground on pin 3.</p>
+  <p><strong>ATmega32A</strong> — Pico pins 9-12:
+  <code>GP6 SCK &middot; GP7 MOSI &middot; GP8 MISO &middot; GP9 RESET</code>, ground on pin 8.</p>
+  <p>Always connect ground between the programmer and your board — a shared
+  power supply isn't enough. Both boards must run at 3.3&nbsp;V; the Pico's
+  pins are not 5&nbsp;V tolerant.</p>
+
+  <h3>Which CPLD do I have?</h3>
+  <p>The 5M40ZE64, 5M80ZE64 and 5M160ZE64 all report the same JTAG ID
+  (<code>0x020A50DD</code>) — MAX V doesn't encode density in its ID, and all three
+  share a package. Reading the ID confirms the board is powered and wired
+  correctly, but can't tell you which of the three you're holding. Your SVF
+  names its target device, so this page reads that and shows it before
+  programming. Check it matches the marking on your chip.</p>
+
+  <h3>Making the files</h3>
+  <p>CPLD, in Quartus, once per build:<br>
+  <code>quartus_cpf -c -q 12.0MHz -g 3.3 -n p design.pof design.svf</code></p>
+  <p>AVR: use the <code>.hex</code> your compiler or IDE produces.</p>
+
+  <h3>Fuses</h3>
+  <p>This page reads the AVR's fuses and shows them, but never changes them.
+  Your board ships with the right settings, and a wrong fuse write can only be
+  undone with a high-voltage programmer. If you think your fuses are wrong,
+  get in touch rather than guessing.</p>
+</div>
+
+</div>
+
+<script>
+'use strict';
+
+/* ------------------------------------------------------------------
+   Serial transport
+   ------------------------------------------------------------------ */
+
+let port = null, reader = null, writer = null;
+let rxBuf = '';                 // partial line accumulator
+const lineQ = [];               // completed lines awaiting a consumer
+let lineWaiter = null;          // resolve fn for whoever is awaiting a line
+let busy = false;
+
+const $ = id => document.getElementById(id);
+
+function log(text, cls) {
+  const el = $('log');
+  const row = document.createElement('div');
+  const t = document.createElement('time');
+  const d = new Date();
+  t.textContent = d.toTimeString().slice(0, 8);
+  const s = document.createElement('span');
+  if (cls) s.className = cls;
+  s.textContent = text;
+  row.append(t, s);
+  el.appendChild(row);
+  el.scrollTop = el.scrollHeight;
+}
+
+/* The firmware speaks newline-terminated text. Reads arrive in arbitrary
+   chunks, so lines are reassembled here and queued — a consumer that asks
+   for a line after it already arrived still gets it. */
+async function readLoop() {
+  const dec = new TextDecoder();
+  try {
+    while (port && port.readable) {
+      const { value, done } = await reader.read();
+      if (done) break;
+      rxBuf += dec.decode(value, { stream: true });
+      let i;
+      while ((i = rxBuf.indexOf('\n')) >= 0) {
+        const line = rxBuf.slice(0, i).replace(/\r$/, '');
+        rxBuf = rxBuf.slice(i + 1);
+        if (!line) continue;
+        if (lineWaiter) { const w = lineWaiter; lineWaiter = null; w(line); }
+        else lineQ.push(line);
+      }
+    }
+  } catch (e) {
+    if (port) log('Connection lost: ' + e.message, 'er');
+  }
+}
+
+function nextLine(timeoutMs = 8000) {
+  if (lineQ.length) return Promise.resolve(lineQ.shift());
+  return new Promise(resolve => {
+    const timer = setTimeout(() => { lineWaiter = null; resolve(null); }, timeoutMs);
+    lineWaiter = line => { clearTimeout(timer); resolve(line); };
+  });
+}
+
+async function send(text) {
+  log('> ' + text, 'tx');
+  await writer.write(new TextEncoder().encode(text + '\n'));
+}
+
+async function ask(text, timeoutMs) {
+  await send(text);
+  const r = await nextLine(timeoutMs);
+  if (r) log(r, 'rx'); else log('(no reply)', 'er');
+  return r;
+}
+
+/* ------------------------------------------------------------------
+   UI helpers
+   ------------------------------------------------------------------ */
+
+function stage(n, on) { $('st' + n).dataset.on = on ? '1' : ''; }
+
+function verdict(kind, head, bodyHtml) {
+  const v = $('verdict');
+  v.className = 'verdict show ' + kind;
+  $('vh').textContent = head;
+  $('vb').innerHTML = bodyHtml;
+}
+
+function hideVerdict() { $('verdict').className = 'verdict'; }
+
+/* Signature element: a row of cells standing in for a shift register.
+   Driven by real statement counts from the firmware, not a fake timer. */
+const CELLS = 48;
+function buildCells() {
+  const c = $('cells');
+  c.innerHTML = '';
+  for (let i = 0; i < CELLS; i++) {
+    const d = document.createElement('div');
+    d.className = 'cell';
+    c.appendChild(d);
+  }
+}
+function animateCells(seed) {
+  const cells = $('cells').children;
+  for (let i = 0; i < cells.length; i++) {
+    // Deterministic pseudo-pattern from the live statement count, so the
+    // motion tracks real progress rather than wall-clock time.
+    const bit = ((seed * 2654435761 + i * 40503) >>> ((i % 13) + 3)) & 1;
+    cells[i].className = 'cell' + (bit ? ' hot' : '');
+  }
+  const edge = seed % CELLS;
+  if (cells[edge]) cells[edge].className = 'cell edge';
+}
+function restCells() {
+  for (const c of $('cells').children) c.className = 'cell';
+}
+
+/* ------------------------------------------------------------------
+   Mode definitions
+
+   The two board types differ in file format, firmware commands and what
+   "detected" means, so each mode owns those differences in one place
+   rather than scattering `if (mode === ...)` through the flow.
+   ------------------------------------------------------------------ */
+
+const MODES = {
+  cpld: {
+    ext: '.svf',
+    label: 'MAX V CPLD',
+    idCmd: 'ID',
+    flashCmd: 'SVF',
+    dropHead: 'Drop your .svf file here',
+    idHint: "Reads the CPLD's JTAG ID to confirm wiring and power.",
+    pins: 'GP2 TCK · GP3 TMS · GP4 TDI · GP5 TDO',
+    prepare: prepareSvf,
+    parseId: parseCpldId
+  },
+  avr: {
+    ext: '.hex',
+    label: 'ATmega32A',
+    idCmd: 'AVRID',
+    flashCmd: 'AVRFLASH',
+    dropHead: 'Drop your .hex file here',
+    idHint: "Reads the AVR's signature to confirm wiring and power.",
+    pins: 'GP6 SCK · GP7 MOSI · GP8 MISO · GP9 RESET',
+    prepare: prepareHex,
+    parseId: parseAvrId
+  }
+};
+
+let mode = MODES.cpld;
+
+/* ------------------------------------------------------------------
+   SVF inspection
+
+   Quartus records the target device and USERCODE in the SVF header.
+   Reading them here is the only reliable way to say WHICH MAX V a file
+   is for, since the three E64 parts are indistinguishable over JTAG.
+   ------------------------------------------------------------------ */
+
+function prepareSvf(text) {
+  const head = text.slice(0, 4000);
+  const out = { device: null, build: null, note: '' };
+
+  let m = head.match(/^!\s*Device\s*#\d+\s*:\s*(\S+)/mi);
+  if (m) out.device = m[1].toUpperCase();
+  else {
+    m = head.match(/5M(?:40|80|160|240|570|1270|2210)Z[A-Z]?\d*[A-Z]?\d*/i);
+    if (m) out.device = m[0].toUpperCase();
+  }
+
+  const u = head.match(/!\s*NOTE\s+"USERCODE"\s+"([0-9A-Fa-f]+)"/);
+  if (u) out.build = u[1].toUpperCase();
+
+  // Non-zero HIR/HDR/TIR/TDR means a multi-device chain the firmware
+  // deliberately refuses rather than misprogram.
+  if (/\b(?:HIR|HDR|TIR|TDR)\s+[1-9]\d*/i.test(text)) {
+    throw new Error('This SVF targets several devices wired in series. ' +
+      'Regenerate it for a single device.');
+  }
+
+  out.bytes = new TextEncoder().encode(text);
+  return out;
+}
+
+/* ------------------------------------------------------------------
+   Intel HEX
+
+   Parsed here rather than on the Pico: the browser has memory to spare
+   and this keeps address-record and checksum handling out of firmware.
+   The Pico receives a flat binary image.
+   ------------------------------------------------------------------ */
+
+const AVR_FLASH = 32768;
+
+function prepareHex(text) {
+  const out = new Uint8Array(AVR_FLASH).fill(0xFF);
+  let high = 0, top = 0, seen = false;
+  const lines = text.split(/\r?\n/);
+
+  for (let n = 0; n < lines.length; n++) {
+    const line = lines[n].trim();
+    if (!line) continue;
+    if (line[0] !== ':') throw new Error(`Line ${n + 1}: not an Intel HEX record.`);
+    if (line.length < 11) throw new Error(`Line ${n + 1}: record too short.`);
+
+    const b = [];
+    for (let i = 1; i + 1 < line.length; i += 2) {
+      const v = parseInt(line.substr(i, 2), 16);
+      if (Number.isNaN(v)) throw new Error(`Line ${n + 1}: not valid hex.`);
+      b.push(v);
+    }
+    const len = b[0], addr = (b[1] << 8) | b[2], type = b[3];
+    if (b.length !== len + 5) throw new Error(`Line ${n + 1}: length mismatch.`);
+
+    // Checksum is the two's complement of the sum of preceding bytes.
+    let sum = 0;
+    for (let i = 0; i < b.length - 1; i++) sum += b[i];
+    if (((~sum + 1) & 0xFF) !== b[b.length - 1]) {
+      throw new Error(`Line ${n + 1}: checksum error — the file may be corrupt.`);
+    }
+
+    if (type === 0x00) {
+      const base = high + addr;
+      for (let i = 0; i < len; i++) {
+        const a = base + i;
+        if (a >= AVR_FLASH) {
+          throw new Error('This program is bigger than the ATmega32A\u2019s ' +
+            '32 KB of flash.');
+        }
+        out[a] = b[4 + i];
+        if (a + 1 > top) top = a + 1;
+        seen = true;
+      }
+    } else if (type === 0x01) break;
+    else if (type === 0x04) high = ((b[4] << 8) | b[5]) << 16;
+    else if (type === 0x02) high = ((b[4] << 8) | b[5]) << 4;
+  }
+
+  if (!seen) throw new Error('No program data found in this file.');
+
+  const pct = (100 * top / AVR_FLASH).toFixed(1);
+  return {
+    device: 'ATmega32A',
+    build: null,
+    note: top.toLocaleString() + ' bytes \u00b7 ' + pct + '% of flash',
+    bytes: out.subarray(0, top)
+  };
+}
+
+/* ------------------------------------------------------------------
+   Device replies
+   ------------------------------------------------------------------ */
+
+function parseCpldId(line) {
+  if (!line.startsWith('IDCODE')) return null;
+  const p = line.split(' ');
+  return { id: p[1], name: p.slice(2).join(' ') };
+}
+
+function parseAvrId(line) {
+  if (!line.startsWith('SIG')) return null;
+  const p = line.split(' ');
+  return { id: p[1], name: p.slice(2).join(' ') };
+}
+
+/* ------------------------------------------------------------------
+   Connection
+   ------------------------------------------------------------------ */
+
+async function connect() {
+  try {
+    port = await navigator.serial.requestPort();
+    await port.open({ baudRate: 115200 });
+    reader = port.readable.getReader();
+    writer = port.writable.getWriter();
+    readLoop();
+    await new Promise(r => setTimeout(r, 300));
+
+    const pong = await ask('PING', 4000);
+    if (!pong || !pong.startsWith('PONG')) {
+      verdict('fail', 'Wrong device',
+        "That serial port didn't answer as a programmer. Disconnect, then " +
+        'pick the port named <code>Pico</code> or <code>USB Serial Device</code>.');
+      await disconnect();
+      return;
+    }
+
+    $('btnConnect').textContent = 'Disconnect';
+    $('btnId').disabled = false;
+    $('st1b').innerHTML = 'Connected. Firmware <strong>' +
+      pong.split(' ')[1] + '</strong>.';
+    stage(1, true); stage(2, true);
+    hideVerdict();
+    await readId();
+  } catch (e) {
+    if (e.name !== 'NotFoundError') log('Connect failed: ' + e.message, 'er');
+  }
+}
+
+async function disconnect() {
+  $('btnId').disabled = true;
+  setDropEnabled(false);
+  $('btnConnect').textContent = 'Connect';
+  $('st1b').textContent = 'Plug the programmer into USB.';
+  $('st2b').textContent = mode.idHint;
+  stage(2, false); stage(3, false);
+  try {
+    if (reader) { await reader.cancel(); reader.releaseLock(); }
+    if (writer) writer.releaseLock();
+    if (port) await port.close();
+  } catch (e) { /* already gone */ }
+  port = reader = writer = null;
+}
+
+/* ------------------------------------------------------------------
+   Detection
+   ------------------------------------------------------------------ */
+
+async function readId() {
+  const r = await ask(mode.idCmd, 8000);
+  if (!r) return;
+
+  if (r.startsWith('ERR NO_TARGET')) {
+    const isCpld = (mode === MODES.cpld);
+    $('st2b').textContent = 'No ' + (isCpld ? 'CPLD' : 'AVR') + ' found.';
+    stage(2, false);
+    setDropEnabled(false);
+    verdict('fail', 'No board detected',
+      'The programmer is working, but nothing answered on the ' +
+      (isCpld ? 'JTAG' : 'ISP') + ' pins. Check, in this order:<ul>' +
+      (isCpld
+        ? '<li><strong>TDI and TDO swapped</strong> — the easiest pair to get backwards</li>'
+        : '<li><strong>MOSI and MISO swapped</strong> — the easiest pair to get backwards</li>' +
+          '<li><strong>RESET not connected</strong> — ISP cannot start without it</li>') +
+      '<li><strong>Board power</strong> — the board needs its own supply</li>' +
+      '<li><strong>Ground</strong> — a ground wire between programmer and board, ' +
+      'not just a shared power supply</li></ul>' +
+      'Pins for this mode: <code>' + mode.pins + '</code>');
+    return;
+  }
+
+  const info = mode.parseId(r);
+  if (info) {
+    $('st2b').innerHTML = '<strong>' + info.name + '</strong><br><code>' +
+      info.id + '</code>';
+    stage(2, true); stage(3, true);
+    setDropEnabled(true);
+    hideVerdict();
+    if (mode === MODES.avr) await readFuses();
+    return;
+  }
+
+  if (r.startsWith('ERR')) {
+    verdict('fail', "Couldn't read the board", explainError(r.slice(4)));
+  }
+}
+
+/*
+ * Fuses are read for information only — this page never writes them.
+ * A bad fuse write needs a high-voltage programmer to undo, which is not
+ * a repair a student can make, so the capability stays out of the
+ * student-facing tool entirely.
+ */
+async function readFuses() {
+  const r = await ask('AVRFUSES', 6000);
+  if (!r || !r.startsWith('FUSES')) return;
+
+  const l = r.match(/lfuse=(0x[0-9A-Fa-f]+)/);
+  const hf = r.match(/hfuse=(0x[0-9A-Fa-f]+)/);
+  if (!l || !hf) return;
+
+  $('st2b').innerHTML += '<br><span style="font-size:12px;color:var(--muted)">' +
+    'fuses ' + l[1] + ' / ' + hf[1] + '</span>';
+
+  if (!/safe=1/.test(r)) {
+    const why = r.match(/why=(.*)$/);
+    verdict('warn', 'Unusual fuse settings',
+      "This board's fuses aren't the expected ones" +
+      (why ? ': ' + why[1] : '') + '. Programming will still be attempted, ' +
+      'but if it fails this is the likely reason.');
+  }
+}
+
+function setDropEnabled(on) {
+  const d = $('drop');
+  d.classList.toggle('off', !on);
+  $('dropS').textContent = on
+    ? 'or click to choose'
+    : 'or click to choose \u00b7 connect the programmer first';
+}
+
+/* ------------------------------------------------------------------
+   Programming
+   ------------------------------------------------------------------ */
+
+async function program(file) {
+  if (busy || !port) return;
+
+  let info;
+  try {
+    info = mode.prepare(await file.text());
+  } catch (e) {
+    verdict('fail', "Couldn't read that file", e.message);
+    return;
+  }
+
+  hideVerdict();
+  busy = true;
+  setDropEnabled(false);
+  $('btnId').disabled = true;
+
+  const bytes = info.bytes;
+  $('reg').className = 'reg show';
+  buildCells();
+  $('regState').textContent = 'SENDING';
+  $('mBytes').textContent = '0';
+  $('mStmt').textContent = '0';
+  $('bar').style.width = '0%';
+
+  const devLine = info.device
+    ? 'File targets <strong>' + info.device + '</strong>'
+      + (info.build ? ' &middot; build <code>' + info.build + '</code>' : '')
+      + (info.note ? ' &middot; ' + info.note : '')
+      + '. '
+    : '';
+  $('st3b').innerHTML = devLine + 'Programming\u2026';
+  log('File ' + file.name + ' \u2014 ' + bytes.length + ' bytes' +
+      (info.device ? ', targets ' + info.device : '') +
+      (info.build ? ', build ' + info.build : ''), 'tx');
+
+  const t0 = performance.now();
+  let ok = false, detail = '';
+
+  try {
+    await send(mode.flashCmd + ' ' + bytes.length);
+    const ready = await nextLine(8000);
+    if (!ready || !ready.startsWith('READY')) {
+      throw new Error(ready ? ready.replace(/^ERR /, '')
+                            : 'the programmer did not acknowledge');
+    }
+    log(ready, 'rx');
+
+    // 512-byte writes keep the firmware's 64-byte USB packets flowing
+    // without letting the buffer back up.
+    const CHUNK = 512;
+    for (let sent = 0; sent < bytes.length; sent += CHUNK) {
+      await writer.write(bytes.subarray(sent, sent + CHUNK));
+      const done = Math.min(sent + CHUNK, bytes.length);
+      $('mBytes').textContent = done.toLocaleString();
+      $('bar').style.width = (100 * done / bytes.length) + '%';
+      $('mTime').textContent = ((performance.now() - t0) / 1000).toFixed(1) + 's';
+      if ((sent / CHUNK) % 4 === 0) {
+        animateCells(sent >> 6);
+        await new Promise(r => setTimeout(r, 0));   // let the UI paint
+      }
+    }
+
+    $('regState').textContent = 'PROGRAMMING';
+
+    // Programming continues after the last byte is sent, so this wait is
+    // deliberately long — a chip erase alone can take seconds.
+    for (;;) {
+      const line = await nextLine(180000);
+      if (!line) { detail = 'the programmer stopped responding'; break; }
+      log(line, line.startsWith('ERR') ? 'er' : 'rx');
+
+      if (line.startsWith('PROGRESS')) {
+        const n = parseInt(line.split(' ')[1], 10) || 0;
+        $('mStmt').textContent = n.toLocaleString();
+        $('mTime').textContent = ((performance.now() - t0) / 1000).toFixed(1) + 's';
+        animateCells(n);
+        continue;
+      }
+      if (line.startsWith('DONE')) {
+        ok = true;
+        const st = line.match(/statements=(\d+)/) || line.match(/pages=(\d+)/);
+        if (st) $('mStmt').textContent = (+st[1]).toLocaleString();
+        break;
+      }
+      if (line.startsWith('ERR')) { detail = line.slice(4); break; }
+    }
+  } catch (e) {
+    detail = e.message;
+  }
+
+  const secs = ((performance.now() - t0) / 1000).toFixed(1);
+  $('mTime').textContent = secs + 's';
+  $('regState').textContent = ok ? 'DONE' : 'STOPPED';
+  restCells();
+
+  if (ok) {
+    $('bar').style.width = '100%';
+    $('st3b').innerHTML = 'Programmed in <strong>' + secs + 's</strong>.';
+    verdict('pass', 'Programmed',
+      (mode === MODES.avr
+        ? 'Your ATmega32A is running the new program, verified byte for byte '
+        : 'Your CPLD is running the new design, verified ') +
+      'against the file. Drop another to program the next board.');
+  } else {
+    $('st3b').textContent = "Didn't program.";
+    verdict('fail', 'Programming failed', explainError(detail));
+  }
+
+  busy = false;
+  setDropEnabled(true);
+  $('btnId').disabled = false;
+}
+
+/* Turn a firmware error code into something a student can act on. */
+function explainError(detail) {
+  const d = (detail || '').trim();
+
+  if (/TDO_MISMATCH/.test(d)) {
+    return 'The CPLD returned something different from what the file expected.' +
+      '<ul><li>Is this SVF built for the part on your board? ' +
+      'A 5M160Z file won\u2019t program a 5M80Z.</li>' +
+      '<li>Long or unshielded jumper wires — keep them short</li>' +
+      '<li>Check the ground connection</li></ul><code>' + d + '</code>';
+  }
+  if (/^VERIFY/.test(d)) {
+    return 'The chip programmed, but reading it back gave different data.' +
+      '<ul><li>Check the ground connection and keep wires short</li>' +
+      '<li>A failed chip erase can cause this — try once more</li></ul>' +
+      '<code>' + d + '</code>';
+  }
+  if (/SIGNATURE/.test(d)) {
+    return 'The chip answered, but it isn\u2019t an ATmega32A. Nothing was ' +
+      'erased or written.<br><code>' + d + '</code>';
+  }
+  if (/NO_SYNC/.test(d)) {
+    return 'The AVR didn\u2019t respond to the programming handshake. Check ' +
+      'RESET is wired and the board is powered.';
+  }
+  if (/TOO_BIG/.test(d)) {
+    return 'That program is larger than the chip\u2019s flash.<br><code>' +
+      d + '</code>';
+  }
+  if (/TIMEOUT/.test(d)) {
+    return 'The transfer stopped partway. Unplug the programmer, plug it ' +
+      'back in, and try again. The chip may be partly erased until a run ' +
+      'completes.';
+  }
+  if (/CHAIN/.test(d)) {
+    return 'This file targets several devices wired in series. Regenerate ' +
+      'it for a single device.';
+  }
+  if (/TOO_LONG/.test(d)) {
+    return 'The file contains a shift longer than this firmware handles — ' +
+      'it was probably built for a larger device.<br><code>' + d + '</code>';
+  }
+  if (/UNSUPPORTED|SYNTAX/.test(d)) {
+    return 'This doesn\u2019t look like a file this programmer understands. ' +
+      'Check the board type selected above.<br><code>' + d + '</code>';
+  }
+  return d ? '<code>' + d + '</code>' : 'The programmer stopped responding.';
+}
+
+/* ------------------------------------------------------------------
+   Mode switching
+   ------------------------------------------------------------------ */
+
+function setMode(next) {
+  if (busy) return;
+  mode = next;
+  const isCpld = (mode === MODES.cpld);
+
+  $('mCpld').classList.toggle('on', isCpld);
+  $('mAvr').classList.toggle('on', !isCpld);
+  $('mCpld').setAttribute('aria-selected', String(isCpld));
+  $('mAvr').setAttribute('aria-selected', String(!isCpld));
+
+  $('dropH').textContent = mode.dropHead;
+  $('st2b').textContent = mode.idHint;
+  $('st3b').innerHTML = 'Drop your <code>' + mode.ext + '</code> file below.';
+  $('file').accept = mode.ext;
+
+  stage(2, false); stage(3, false);
+  setDropEnabled(false);
+  hideVerdict();
+  $('reg').className = 'reg';
+
+  // Re-detect on the new pins: what counts as "connected" differs per mode.
+  if (port) readId();
+}
+
+/* ------------------------------------------------------------------
+   Wiring
+   ------------------------------------------------------------------ */
+
+if (!('serial' in navigator)) {
+  $('unsup').classList.add('show');
+  $('btnConnect').disabled = true;
+}
+
+$('btnConnect').onclick = () => port ? disconnect() : connect();
+$('btnId').onclick = readId;
+$('btnClear').onclick = () => { $('log').innerHTML = ''; };
+
+const drop = $('drop'), fileInput = $('file');
+drop.onclick = () => { if (!drop.classList.contains('off')) fileInput.click(); };
+drop.onkeydown = e => {
+  if ((e.key === 'Enter' || e.key === ' ') && !drop.classList.contains('off')) {
+    e.preventDefault(); fileInput.click();
+  }
+};
+fileInput.onchange = e => { if (e.target.files[0]) program(e.target.files[0]); };
+
+['dragenter', 'dragover'].forEach(ev => drop.addEventListener(ev, e => {
+  e.preventDefault();
+  if (!drop.classList.contains('off')) drop.classList.add('over');
+}));
+['dragleave', 'drop'].forEach(ev => drop.addEventListener(ev, e => {
+  e.preventDefault(); drop.classList.remove('over');
+}));
+drop.addEventListener('drop', e => {
+  if (drop.classList.contains('off')) return;
+  const f = e.dataTransfer.files[0];
+  if (!f) return;
+  if (!f.name.toLowerCase().endsWith(mode.ext)) {
+    verdict('warn', 'Wrong kind of file',
+      'This mode programs the <strong>' + mode.label + '</strong>, which needs a ' +
+      '<code>' + mode.ext + '</code> file. ' +
+      (mode === MODES.cpld
+        ? 'Drop the <code>.svf</code> Quartus produced — not the <code>.pof</code>.'
+        : 'Drop the <code>.hex</code> your compiler produced — not the ' +
+          '<code>.elf</code>.') +
+      ' If you meant the other board, switch the type above.');
+    return;
+  }
+  program(f);
+});
+
+$('mCpld').onclick = () => setMode(MODES.cpld);
+$('mAvr').onclick = () => setMode(MODES.avr);
+
+buildCells();
+log('Ready. Pick your board type, then connect the programmer.');
+</script>
+</body>
+</html>
