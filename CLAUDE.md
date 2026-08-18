@@ -43,7 +43,8 @@ firmware/           Pico firmware (C, CMake, Pico SDK)
   jtag.c/.h         JTAG TAP driver — MAX V
   svf.c/.h          streaming SVF parser
   avr.c/.h          AVR ISP driver — ATmega32A
-tools/maxv.py       CLI alternative to the page, same serial protocol
+tools/maxv.py       CLI alternative to the page, same serial protocol (CPLD)
+tools/avr.py        the same for the ATmega32A, plus a host-composed --diag
 tests/              host-side tests, no hardware needed
 ```
 

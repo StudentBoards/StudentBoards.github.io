@@ -79,7 +79,8 @@ firmware/                     Pico firmware, C + CMake
   svf.c/.h                    streaming SVF parser
   avr.c/.h                    AVR ISP driver (ATmega32A)
   *.uf2                       prebuilt, ready to flash
-tools/maxv.py                 command-line alternative to the web page
+tools/maxv.py                 command-line alternative to the page (CPLD)
+tools/avr.py                  command-line alternative to the page (ATmega32A)
 tests/                        host-side tests, no hardware needed
 ```
 
@@ -123,7 +124,7 @@ CRLF, sparse addresses, extended-address records, oversize images.
 
 ## Serial protocol
 
-The page and `maxv.py` both speak this over USB CDC at 115200.
+The page, `maxv.py` and `avr.py` all speak this over USB CDC at 115200.
 
 | Command | Reply |
 |---|---|

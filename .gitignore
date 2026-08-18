@@ -31,6 +31,9 @@ _deps/
 # --- Host-side test binaries ---------------------------------------------
 tests/test
 tests/realtest
+# MinGW names them .exe, and this repo is developed on Windows.
+tests/test.exe
+tests/realtest.exe
 tests/*.o
 tests/pico/
 
