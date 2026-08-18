@@ -136,6 +136,15 @@ button:focus-visible{outline:2.5px solid var(--amber);outline-offset:2px}
 .drop-h{font-family:var(--mono);font-size:14px;font-weight:500;margin-bottom:5px}
 .drop-s{font-size:13px;color:var(--muted)}
 
+/* ---- verify-only toggle ---- */
+.vonly{
+  display:none;align-items:flex-start;gap:9px;margin-bottom:11px;
+  font-size:13px;color:var(--muted);cursor:pointer;
+}
+.vonly.show{display:flex}
+.vonly input{margin-top:2px;accent-color:var(--teal);cursor:pointer}
+.vonly b{color:var(--ink);font-weight:600}
+
 /* ---- signature: the shift register.
    Bits streaming through a TAP is what this page actually does — a
    generic progress bar would say nothing about the subject. ---- */
@@ -310,10 +319,10 @@ your board is detected, then drop your file. Nothing to install.</p>
 
 <div class="modes" role="tablist">
   <button id="mCpld" class="on" role="tab" aria-selected="true">
-    <b>MAX V CPLD</b><span>5M40Z / 5M80Z / 5M160Z &middot; .svf</span>
+    <b>MAX V CPLD</b><span>JTAG &middot; .svf file</span>
   </button>
   <button id="mAvr" role="tab" aria-selected="false">
-    <b>ATmega32A</b><span>AVR dev board &middot; .hex</span>
+    <b>ATmega32A</b><span>ISP &middot; .hex file</span>
   </button>
 </div>
 
@@ -333,6 +342,12 @@ your board is detected, then drop your file. Nothing to install.</p>
     <div class="sbody" id="st3b">Drop your <code>.svf</code> file below.</div>
   </div>
 </div>
+
+<label class="vonly" id="vonlyWrap">
+  <input type="checkbox" id="vonly">
+  <span><b>Verify only</b> &mdash; check the board matches this file without
+  reprogramming it</span>
+</label>
 
 <div class="drop off" id="drop" tabindex="0" role="button" aria-label="Choose or drop a file to program">
   <div class="drop-h" id="dropH">Drop your .svf file here</div>
@@ -412,19 +427,26 @@ your board is detected, then drop your file. Nothing to install.</p>
   replaced. That's normal &mdash; keep your source, not the board, as the copy
   that matters.</p>
 
+  <h3>Checking a board without changing it</h3>
+  <p>Tick <strong>Verify only</strong> before dropping a <code>.hex</code> and the
+  programmer compares every byte of the chip against the file without erasing
+  anything. Use it to confirm which build a board is running, or to check a
+  board you don't want to disturb.</p>
+
   <h3>Fuses</h3>
   <p>Your board ships set up correctly, so for normal coursework you can ignore
   this. If you need to change the clock speed or free up PORTC, the fuse panel
   appears once an AVR is detected.</p>
   <p>The presets cover the settings you're likely to want &mdash; clock speed, and
-  turning JTAG off to free PORTC 2-5. All of them keep serial programming
-  enabled, so none can lock you out.</p>
+  freeing PORTC 2-5 by switching off the chip's on-board debug interface. All of
+  them keep ISP enabled, so none can lock you out.</p>
   <p>If a board does stop responding after a fuse change, it's usually
   recoverable. A wrong clock setting means the chip has no clock &mdash; feed a
   slow square wave into its XTAL1 pin and it programs again. The one setting
   that genuinely can't be undone from here is the serial programming fuse
   (SPIEN); this programmer refuses to write it, but other tools will let you,
-  and recovery afterwards needs JTAG or a high-voltage programmer.</p>
+  and recovery afterwards needs specialist equipment. Get in touch rather than
+  buying a replacement.</p>
   <p>Changed the clock? Update <code>F_CPU</code> in your code to match, or your
   delays and serial baud rate will be wrong.</p>
 </div>
@@ -560,6 +582,7 @@ const MODES = {
     label: 'MAX V CPLD',
     idCmd: 'ID',
     flashCmd: 'SVF',
+    verifyCmd: null,
     dropHead: 'Drop your .svf file here',
     idHint: "Wire the CPLD board to the JTAG pins, then check it.",
     pins: 'GP2 TCK · GP3 TMS · GP4 TDI · GP5 TDO',
@@ -571,6 +594,7 @@ const MODES = {
     label: 'ATmega32A',
     idCmd: 'AVRID',
     flashCmd: 'AVRFLASH',
+    verifyCmd: 'AVRVERIFY',
     dropHead: 'Drop your .hex file here',
     idHint: "Wire the AVR board to the ISP pins, then check it.",
     pins: 'GP6 SCK · GP7 MOSI · GP8 MISO · GP9 RESET',
@@ -692,7 +716,10 @@ function parseCpldId(line) {
 function parseAvrId(line) {
   if (!line.startsWith('SIG')) return null;
   const p = line.split(' ');
-  return { id: p[1], name: p.slice(2).join(' ') };
+  /* Strip the trailing retries= field: it is read separately for the
+     weak-connection warning and must not leak into the device name. */
+  const name = p.slice(2).join(' ').replace(/\s*retries=\d+\s*$/, '');
+  return { id: p[1], name: name };
 }
 
 /* ------------------------------------------------------------------
@@ -811,9 +838,20 @@ async function readId() {
   if (info) {
     $('st2b').innerHTML = '<strong>' + info.name + '</strong><br><code>' +
       info.id + '</code>';
+
+    /* The firmware reports how much retrying detection needed. A board
+     * that only reads after several attempts will usually fail during
+     * programming too, so say so now rather than after a failed flash. */
+    const rt = r.match(/retries=(\d+)/);
+    if (rt && +rt[1] > 0) {
+      verdict('warn', 'Weak connection',
+        'The chip answered, but only after <strong>' + rt[1] + '</strong> ' +
+        'retr' + (+rt[1] === 1 ? 'y' : 'ies') + '. Programming may fail. ' +
+        'Shorten your jumper wires and check the ground connection between ' +
+        'the programmer and the board.');
+    }
     stage(2, true); stage(3, true);
     setDropEnabled(true);
-    hideVerdict();
     if (mode === MODES.avr) await readFuses();
     return;
   }
@@ -842,8 +880,9 @@ const FUSE_PRESETS = [
   { name: 'External crystal',
     note: 'Only if your board actually has a crystal fitted.',
     l: 0xFF, h: 0x89, confirm: true },
-  { name: 'Internal 8 MHz, JTAG off',
-    note: 'Frees PORTC 2-5 for general I/O.',
+  { name: 'Internal 8 MHz, PORTC 2-5 free',
+    note: "Turns off the chip's on-board debug interface, which otherwise " +
+          'reserves those four pins. Nothing to do with how it is programmed.',
     l: 0xE4, h: 0xD9 }
 ];
 
@@ -861,8 +900,10 @@ function describeFuses(l, h) {
     cksel === 0x3 ? 'internal 4 MHz' :
     cksel === 0x4 ? 'internal 8 MHz' :
     cksel === 0x0 ? 'external clock input' : 'external crystal';
-  const jtag = ((h >> 6) & 1) ? 'JTAG off' : 'JTAG on (PORTC 2-5 unavailable)';
-  return clock + ' \u00b7 ' + jtag;
+  const portc = ((h >> 6) & 1)
+    ? 'PORTC 2-5 free'
+    : 'PORTC 2-5 reserved by the debug interface';
+  return clock + ' \u00b7 ' + portc;
 }
 
 async function readFuses() {
@@ -1004,7 +1045,9 @@ async function program(file) {
   let ok = false, detail = '';
 
   try {
-    await send(mode.flashCmd + ' ' + bytes.length);
+    const verifyOnly = mode.verifyCmd && $('vonly').checked;
+    await send((verifyOnly ? mode.verifyCmd : mode.flashCmd) +
+               ' ' + bytes.length);
     const ready = await nextLine(8000);
     if (!ready || !ready.startsWith('READY')) {
       throw new Error(ready ? ready.replace(/^ERR /, '')
@@ -1060,17 +1103,27 @@ async function program(file) {
   $('regState').textContent = ok ? 'DONE' : 'STOPPED';
   restCells();
 
+  const wasVerify = mode.verifyCmd && $('vonly').checked;
+
   if (ok) {
     $('bar').style.width = '100%';
-    $('st3b').innerHTML = 'Programmed in <strong>' + secs + 's</strong>.';
-    verdict('pass', 'Programmed',
-      (mode === MODES.avr
-        ? 'Your ATmega32A is running the new program, verified byte for byte '
-        : 'Your CPLD is running the new design, verified ') +
-      'against the file. Drop another to program the next board.');
+    if (wasVerify) {
+      $('st3b').innerHTML = 'Checked in <strong>' + secs + 's</strong>.';
+      verdict('pass', 'Board matches',
+        'Every byte of the chip matches this file, so the board is already ' +
+        'running this build. Nothing was changed.');
+    } else {
+      $('st3b').innerHTML = 'Programmed in <strong>' + secs + 's</strong>.';
+      verdict('pass', 'Programmed',
+        (mode === MODES.avr
+          ? 'Your ATmega32A is running the new program, verified byte for byte '
+          : 'Your CPLD is running the new design, verified ') +
+        'against the file. Drop another to program the next board.');
+    }
   } else {
-    $('st3b').textContent = "Didn't program.";
-    verdict('fail', 'Programming failed', explainError(detail));
+    $('st3b').textContent = wasVerify ? "Didn't match." : "Didn't program.";
+    verdict('fail', wasVerify ? "Board doesn't match" : 'Programming failed',
+            explainError(detail));
   }
 
   busy = false;
@@ -1088,6 +1141,20 @@ function explainError(detail) {
       'A 5M160Z file won\u2019t program a 5M80Z.</li>' +
       '<li>Long or unshielded jumper wires — keep them short</li>' +
       '<li>Check the ground connection</li></ul><code>' + d + '</code>';
+  }
+  if (/^MISMATCH/.test(d)) {
+    const m = d.match(/(\d+) of (\d+) bytes differ, first at (0x[0-9A-F]+)/);
+    if (m && +m[1] === 1) {
+      return 'One byte differs, at <code>' + m[3] + '</code>. A single ' +
+        'difference is usually a marginal read rather than wrong firmware &mdash; ' +
+        'check the wiring and try again before reflashing.';
+    }
+    return 'This board is not running the file you dropped' +
+      (m ? ' &mdash; <strong>' + (+m[1]).toLocaleString() + '</strong> of ' +
+           (+m[2]).toLocaleString() + ' bytes differ, starting at <code>' +
+           m[3] + '</code>' : '') +
+      '. Untick <strong>Verify only</strong> and drop the file again to ' +
+      'program it.';
   }
   if (/^VERIFY/.test(d)) {
     return 'The chip programmed, but reading it back gave different data.' +
@@ -1154,6 +1221,11 @@ function setMode(next) {
   $('reg').className = 'reg';
   $('fuse').className = 'fuse';    // fuses are an AVR-only concept
   curFuses = null;
+
+  /* An SVF already carries its own verify vectors, so a separate verify
+   * pass only means something for the AVR. */
+  $('vonlyWrap').classList.toggle('show', !!mode.verifyCmd);
+  $('vonly').checked = false;
 
   /* Different board type means different pins, so any earlier result no
    * longer applies. Clear it and let the student check again rather than

@@ -1,0 +1,72 @@
+# --- Pico SDK / CMake build output ---------------------------------------
+# The SDK generates a large build tree. Nothing in it is worth versioning:
+# it is fully reproducible from firmware/ with cmake + make.
+build/
+build2/
+cmake-build-*/
+CMakeFiles/
+CMakeCache.txt
+cmake_install.cmake
+Makefile
+*.cmake.stamp
+compile_commands.json
+
+# The SDK also fetches picotool into the build tree on first configure.
+_deps/
+
+# Build artefacts. The .uf2 files in firmware/ ARE committed on purpose so
+# students can flash without a toolchain — but intermediate outputs are not.
+*.elf
+*.bin
+*.hex
+*.dis
+*.elf.map
+*.o
+*.a
+
+# ...except the release .uf2 files, which are deliberately tracked.
+!firmware/pico1_programmer.uf2
+!firmware/pico2_programmer.uf2
+
+# --- Host-side test binaries ---------------------------------------------
+tests/test
+tests/realtest
+tests/*.o
+tests/pico/
+
+# --- Quartus output ------------------------------------------------------
+# Generated per design; regenerate with quartus_cpf rather than committing.
+*.pof
+*.sof
+*.svf
+*.jam
+*.jbc
+db/
+incremental_db/
+output_files/
+simulation/
+greybox_tmp/
+*.qws
+*.rpt
+*.summary
+*.done
+*.jdi
+*.pin
+*.sld
+*.qarlog
+
+# --- Python --------------------------------------------------------------
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+*.egg-info/
+
+# --- Editors and OS ------------------------------------------------------
+.vscode/
+.idea/
+*.swp
+*~
+.DS_Store
+Thumbs.db
+desktop.ini
