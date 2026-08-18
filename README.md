@@ -10,7 +10,9 @@ software to install.
 
 ## For students
 
-1. Flash the Pico once: hold BOOTSEL while plugging it in, then copy
+1. Flash the Pico once. The programmer page has a **First time? Set up your
+   Pico** panel with the download links and steps, or do it directly: hold
+   BOOTSEL while plugging the Pico in, then copy
    `firmware/pico1_programmer.uf2` (or `pico2_programmer.uf2` for a Pico 2)
    onto the `RPI-RP2` drive that appears.
 2. Wire the Pico to your board — see below.

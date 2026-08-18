@@ -83,6 +83,56 @@ h1{
 h1 em{font-style:normal;color:var(--teal)}
 .lede{max-width:52ch;color:var(--muted);margin-bottom:34px}
 
+/* ---- first-run setup: needed once, then never again, so it collapses
+       rather than sitting above the flow forever. <details> gives this
+       natively — no JS, keyboard accessible, and open-able by default if
+       we ever want to. ---- */
+.setup{
+  border:1.5px solid var(--rule);background:var(--surface);
+  margin-bottom:26px;
+}
+.setup summary{
+  padding:13px 15px;cursor:pointer;list-style:none;
+  font-family:var(--mono);font-size:12px;font-weight:600;
+  letter-spacing:.09em;text-transform:uppercase;
+  display:flex;align-items:center;gap:9px;
+}
+.setup summary::-webkit-details-marker{display:none}
+.setup summary::before{
+  content:'+';font-size:15px;color:var(--teal);width:12px;
+}
+.setup[open] summary::before{content:'\2212'}
+.setup summary:hover{background:#F5FAF8}
+.setup summary span{
+  font-family:var(--sans);font-size:12.5px;font-weight:400;
+  letter-spacing:0;text-transform:none;color:var(--muted);margin-left:auto;
+}
+.setup-body{
+  padding:4px 15px 17px;border-top:1.5px solid var(--rule);
+  font-size:13.5px;
+}
+.dl{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin:14px 0 16px}
+.dl a{
+  display:block;border:1.5px solid var(--ink);background:var(--surface);
+  padding:12px 14px;text-decoration:none;color:var(--ink);
+  transition:background .18s;
+}
+.dl a:hover{background:var(--ink);color:var(--paper)}
+.dl a:hover small{color:var(--paper);opacity:.8}
+.dl a:focus-visible{outline:2.5px solid var(--amber);outline-offset:2px}
+.dl b{
+  font-family:var(--mono);font-size:13px;font-weight:600;
+  display:block;margin-bottom:2px;
+}
+.dl small{color:var(--muted);font-size:12px;line-height:1.4;display:block}
+.setup ol{margin:0 0 12px 18px}
+.setup li{margin-bottom:7px}
+.setup .aside{
+  font-size:12.5px;color:var(--muted);border-top:1.5px solid var(--rule);
+  padding-top:11px;
+}
+@media (max-width:560px){ .dl{grid-template-columns:1fr} }
+
 /* ---- stage strip: Connect -> Detect -> Program is a real sequence,
        so the numbering encodes order the student must follow ---- */
 .stages{
@@ -325,6 +375,44 @@ your board is detected, then drop your file. Nothing to install.</p>
     <b>ATmega32A</b><span>ISP &middot; .hex file</span>
   </button>
 </div>
+
+<details class="setup" id="setup">
+  <summary>First time? Set up your Pico<span>one-off &middot; takes a minute</span></summary>
+  <div class="setup-body">
+    <p style="margin-top:13px">The Pico needs the programmer firmware loaded onto
+    it once. After that it stays on the Pico &mdash; you won't need this again.</p>
+
+    <div class="dl">
+      <a href="firmware/pico1_programmer.uf2" download>
+        <b>Pico 1 &darr;</b>
+        <small>The original Raspberry Pi Pico, Pico H, Pico W</small>
+      </a>
+      <a href="firmware/pico2_programmer.uf2" download>
+        <b>Pico 2 &darr;</b>
+        <small>Pico 2 and Pico 2 W &mdash; it says "Pico 2" on the board</small>
+      </a>
+    </div>
+
+    <ol>
+      <li>Download the file for your Pico above.</li>
+      <li>Hold down the small <strong>BOOTSEL</strong> button on the Pico
+      <em>while</em> plugging it into USB, then let go. A drive called
+      <code>RPI-RP2</code> appears, like a USB stick.</li>
+      <li>Copy the <code>.uf2</code> file onto that drive.</li>
+      <li>The drive disappears on its own &mdash; that's the Pico restarting
+      with the programmer loaded. You're done.</li>
+    </ol>
+
+    <div class="aside">
+      Picked the wrong file? No harm done &mdash; the Pico simply ignores
+      firmware built for the other model. Just copy the right one across.
+      <br><br>
+      The firmware and this page are open source:
+      <a href="https://github.com/StudentBoards/StudentBoards.github.io"
+         style="color:var(--teal)">github.com/StudentBoards</a>
+    </div>
+  </div>
+</details>
 
 <div class="stages">
   <div class="stage" id="st1" data-on="1">
@@ -757,8 +845,9 @@ async function connect(showAllPorts) {
       verdict('fail', 'Wrong device',
         "That port didn't answer as a programmer. Disconnect, then pick the " +
         'one named <strong>Board Programmer</strong>. If nothing by that name ' +
-        'appears, the Pico may still be running different firmware &mdash; ' +
-        'reflash it with the <code>.uf2</code>.');
+        'appears, the Pico is probably running different firmware &mdash; load ' +
+        'the programmer firmware using <strong>First time? Set up your Pico</strong> ' +
+        'above.');
       await disconnect();
       return;
     }
@@ -779,12 +868,25 @@ async function connect(showAllPorts) {
        * rather than guessing. */
       if (!showAllPorts) {
         verdict('warn', 'No programmer in the list?',
-          'The picker only shows Raspberry&nbsp;Pi devices. If your programmer ' +
-          "didn't appear, it may not be plugged in, or it may be a clone with a " +
-          'different USB ID. ' +
-          '<button id="btnShowAll" style="margin-top:9px">Show all ports</button>');
+          'The picker only shows Raspberry&nbsp;Pi devices. If nothing appeared:' +
+          '<ul><li>Is the Pico plugged in?</li>' +
+          "<li><strong>Has it been set up yet?</strong> A brand-new Pico needs " +
+          'the programmer firmware loaded once &mdash; see ' +
+          '<a href="#setup" id="lnkSetup" style="color:var(--teal)">' +
+          'First time? Set up your Pico</a> above.</li></ul>' +
+          '<button id="btnShowAll" style="margin-top:4px">Show all ports</button>');
+
         const b = $('btnShowAll');
         if (b) b.onclick = () => { hideVerdict(); connect(true); };
+
+        /* Open the setup panel and scroll to it — a first-time user has no
+           reason to know the collapsed section is what they need. */
+        const l = $('lnkSetup');
+        if (l) l.onclick = e => {
+          e.preventDefault();
+          $('setup').open = true;
+          $('setup').scrollIntoView({ behavior: 'smooth', block: 'center' });
+        };
       }
       return;
     }
