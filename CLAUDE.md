@@ -17,16 +17,22 @@ the product: a student who cannot work out why their board did not program
 becomes a support email. Prefer "check these three things, in this order"
 over an error code.
 
-## Status — read this before trusting anything
+## Status
 
-The firmware **builds warning-free and the host-side tests pass**, but as of
-the last session **almost none of it had been run against real hardware**.
-Confirmed working: flashing the `.uf2` onto a Pico, and the page connecting
-and getting `PONG`. Everything past that — actual JTAG programming, actual
-ISP programming — was written and simulated but not yet proven on a bench.
+**The CPLD path is proven on hardware.** A 5M80ZE64 programmed successfully
+from a real Quartus SVF: 11,595 statements, 123,611 bits, ~8 seconds, with
+all 3,845 of the file's TDO verify vectors passing. That is the device
+confirming its own responses thousands of times, not just an absence of
+errors.
+
+**The AVR ISP path is still untested on hardware.** It builds and the Intel
+HEX parser is tested, but no ATmega32A has been programmed with it. Expect
+the first bench run to find something.
 
 Treat bug reports from real hardware as more authoritative than anything in
-the code comments, including these.
+the code comments, including these. The one bug found so far
+(`ENDIR`/`ENDDR` conflation, see below) passed fourteen host-side tests and
+all four `DIAG` checks before hardware caught it.
 
 ## Layout
 
@@ -82,6 +88,15 @@ mid-file. See `cmd_svf()`.
 **`RUNTEST` honours both TCK counts and `SEC` minimums.** On MAX V these are
 flash erase and program waits. Overshooting is harmless; undershooting
 corrupts the cycle.
+
+**`ENDIR` and `ENDDR` are matched by full string, not by a character index.**
+They share `E-N-D` and differ only at index 3. An earlier version tested
+`cmd[2]`, so `ENDIR` set `end_dr`: every `SDR` then ended in Pause-IR, and
+the next `SDR`'s route back to Shift-DR passed through Update-IR, latching
+the Capture-IR pattern over the real instruction. The symptom was that the
+first shift after any `SIR` worked and the second returned a 1-bit register —
+which looks exactly like a hardware fault. `tests/test_main.c` has a
+regression test; it fails against the old code, which was verified.
 
 **SPIEN is fatal, CKSEL is not.** `avr_fuse_risk()` returns three levels.
 Unprogramming SPIEN switches ISP off permanently — refused with no override.
