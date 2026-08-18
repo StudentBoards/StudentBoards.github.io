@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Program your CPLD — studentboards.dev</title>
+<title>Program your board — studentboards.dev</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@400;500;600&display=swap" rel="stylesheet">
@@ -171,6 +171,50 @@ button:focus-visible{outline:2.5px solid var(--amber);outline-offset:2px}
 .bar{height:3px;background:#E4EAE7;overflow:hidden}
 .bar i{display:block;height:100%;width:0;background:var(--teal);transition:width .18s}
 
+/* ---- fuse panel ---- */
+.fuse{
+  border:1.5px solid var(--rule);background:var(--surface);
+  margin-bottom:26px;display:none;
+}
+.fuse.show{display:block}
+.fuse-top{
+  display:flex;justify-content:space-between;align-items:center;
+  padding:11px 15px;border-bottom:1.5px solid var(--rule);
+  font-family:var(--mono);font-size:11px;letter-spacing:.11em;
+  text-transform:uppercase;
+}
+.fuse-top button{
+  background:none;color:var(--muted);border:1px solid var(--rule);
+  padding:3px 8px;font-size:10.5px;
+}
+.fuse-top button:hover{background:var(--rule);color:var(--ink)}
+.fuse-body{padding:15px}
+.fuse-now{
+  font-family:var(--mono);font-size:12.5px;margin-bottom:14px;
+  color:var(--muted);
+}
+.fuse-now b{color:var(--ink)}
+.presets{display:grid;gap:8px;margin-bottom:12px}
+.preset{
+  display:flex;align-items:center;gap:12px;width:100%;
+  background:var(--surface);border:1.5px solid var(--rule);
+  color:var(--ink);padding:10px 13px;text-transform:none;
+  letter-spacing:0;font-family:var(--sans);font-size:13.5px;
+  font-weight:400;align-self:stretch;text-align:left;
+}
+.preset:hover:not(:disabled){border-color:var(--teal);background:#F5FAF8}
+.preset.cur{border-color:var(--teal);background:#F0F7F5}
+.preset i{
+  font-style:normal;font-family:var(--mono);font-size:11.5px;
+  color:var(--muted);margin-left:auto;flex:none;
+}
+.preset.cur i::after{content:' \2713';color:var(--teal)}
+.fuse-warn{
+  font-size:12.5px;color:var(--muted);border-top:1.5px solid var(--rule);
+  padding-top:11px;
+}
+.fuse-warn b{color:var(--ink)}
+
 /* ---- verdict ---- */
 .verdict{
   border:1.5px solid var(--ink);padding:17px 19px;margin-bottom:26px;
@@ -251,15 +295,17 @@ button:focus-visible{outline:2.5px solid var(--amber);outline-offset:2px}
   <div class="tag">MAX V PROGRAMMER</div>
 </header>
 
-<h1>Program your CPLD<br>from <em>this page</em>.</h1>
-<p class="lede">Plug the Pico programmer into USB, connect, then drop your SVF file below.
-Nothing to install.</p>
+<h1>Program your board<br>from <em>this page</em>.</h1>
+<p class="lede">Works with both studentboards kits &mdash; the MAX&nbsp;V CPLD board and
+the ATmega32A board. Pick your board type below, connect the Pico programmer, check
+your board is detected, then drop your file. Nothing to install.</p>
 
 <div class="unsupported" id="unsup">
   <div class="v-h" style="color:var(--alert)">Browser not supported</div>
-  <div class="v-b">This page talks to the programmer over Web Serial, which currently works in
-  Chrome, Edge and Opera on desktop. Safari and Firefox can't connect.
-  Open this page in Chrome or Edge to continue.</div>
+  <div class="v-b">Programming your board from this page needs Web Serial, which
+  currently works in Chrome, Edge and Opera on desktop. Safari and older Firefox
+  can't connect. Open this page in Chrome or Edge to continue &mdash; it works the
+  same for both the CPLD and AVR boards.</div>
 </div>
 
 <div class="modes" role="tablist">
@@ -274,21 +320,21 @@ Nothing to install.</p>
 <div class="stages">
   <div class="stage" id="st1" data-on="1">
     <div class="srow"><div class="snum">1</div><div class="slabel">Connect</div></div>
-    <div class="sbody" id="st1b">Plug the programmer into USB.</div>
+    <div class="sbody" id="st1b">Plug the Pico programmer into USB.</div>
     <button id="btnConnect">Connect</button>
   </div>
   <div class="stage" id="st2">
     <div class="srow"><div class="snum">2</div><div class="slabel">Check board</div></div>
-    <div class="sbody" id="st2b">Reads the CPLD's JTAG ID to confirm wiring and power.</div>
-    <button id="btnId" disabled>Read ID</button>
+    <div class="sbody" id="st2b">Wire the CPLD board to the JTAG pins, then check it.</div>
+    <button id="btnId" disabled>Check board</button>
   </div>
   <div class="stage" id="st3">
     <div class="srow"><div class="snum">3</div><div class="slabel">Program</div></div>
-    <div class="sbody" id="st3b">Drop your SVF file below.</div>
+    <div class="sbody" id="st3b">Drop your <code>.svf</code> file below.</div>
   </div>
 </div>
 
-<div class="drop off" id="drop" tabindex="0" role="button" aria-label="Choose or drop an SVF file">
+<div class="drop off" id="drop" tabindex="0" role="button" aria-label="Choose or drop a file to program">
   <div class="drop-h" id="dropH">Drop your .svf file here</div>
   <div class="drop-s" id="dropS">or click to choose &middot; connect the programmer first</div>
 </div>
@@ -311,6 +357,24 @@ Nothing to install.</p>
 <div class="verdict" id="verdict">
   <div class="v-h" id="vh"></div>
   <div class="v-b" id="vb"></div>
+</div>
+
+<div class="fuse" id="fuse">
+  <div class="fuse-top">
+    <b>Fuses</b>
+    <button id="btnFuseClose">Hide</button>
+  </div>
+  <div class="fuse-body">
+    <div class="fuse-now" id="fuseNow">Reading&hellip;</div>
+    <div class="presets" id="presets"></div>
+    <div class="fuse-warn">
+      <b>Only change these if you know you need to.</b> Fuses set the clock
+      speed and hardware options &mdash; they aren't part of your program, and
+      the wrong clock setting will stop the board responding until you feed it
+      an external clock. The serial-programming fuse can't be changed from here
+      at all: switching it off would end ISP for good.
+    </div>
+  </div>
 </div>
 
 <div class="logwrap">
@@ -337,15 +401,32 @@ Nothing to install.</p>
   programming. Check it matches the marking on your chip.</p>
 
   <h3>Making the files</h3>
-  <p>CPLD, in Quartus, once per build:<br>
+  <p><strong>CPLD</strong> &mdash; in Quartus, once per build:<br>
   <code>quartus_cpf -c -q 12.0MHz -g 3.3 -n p design.pof design.svf</code></p>
-  <p>AVR: use the <code>.hex</code> your compiler or IDE produces.</p>
+  <p><strong>AVR</strong> &mdash; use the <code>.hex</code> your compiler or IDE
+  produces. In Microchip Studio it's under <code>Debug\</code> or
+  <code>Release\</code>; with avr-gcc and a Makefile it's whatever your
+  <code>avr-objcopy</code> step writes. Drop the <code>.hex</code>, not the
+  <code>.elf</code>.</p>
+  <p>Programming erases the chip first, so whatever was on the board before is
+  replaced. That's normal &mdash; keep your source, not the board, as the copy
+  that matters.</p>
 
   <h3>Fuses</h3>
-  <p>This page reads the AVR's fuses and shows them, but never changes them.
-  Your board ships with the right settings, and a wrong fuse write can only be
-  undone with a high-voltage programmer. If you think your fuses are wrong,
-  get in touch rather than guessing.</p>
+  <p>Your board ships set up correctly, so for normal coursework you can ignore
+  this. If you need to change the clock speed or free up PORTC, the fuse panel
+  appears once an AVR is detected.</p>
+  <p>The presets cover the settings you're likely to want &mdash; clock speed, and
+  turning JTAG off to free PORTC 2-5. All of them keep serial programming
+  enabled, so none can lock you out.</p>
+  <p>If a board does stop responding after a fuse change, it's usually
+  recoverable. A wrong clock setting means the chip has no clock &mdash; feed a
+  slow square wave into its XTAL1 pin and it programs again. The one setting
+  that genuinely can't be undone from here is the serial programming fuse
+  (SPIEN); this programmer refuses to write it, but other tools will let you,
+  and recovery afterwards needs JTAG or a high-voltage programmer.</p>
+  <p>Changed the clock? Update <code>F_CPU</code> in your code to match, or your
+  delays and serial baud rate will be wrong.</p>
 </div>
 
 </div>
@@ -480,7 +561,7 @@ const MODES = {
     idCmd: 'ID',
     flashCmd: 'SVF',
     dropHead: 'Drop your .svf file here',
-    idHint: "Reads the CPLD's JTAG ID to confirm wiring and power.",
+    idHint: "Wire the CPLD board to the JTAG pins, then check it.",
     pins: 'GP2 TCK · GP3 TMS · GP4 TDI · GP5 TDO',
     prepare: prepareSvf,
     parseId: parseCpldId
@@ -491,7 +572,7 @@ const MODES = {
     idCmd: 'AVRID',
     flashCmd: 'AVRFLASH',
     dropHead: 'Drop your .hex file here',
-    idHint: "Reads the AVR's signature to confirm wiring and power.",
+    idHint: "Wire the AVR board to the ISP pins, then check it.",
     pins: 'GP6 SCK · GP7 MOSI · GP8 MISO · GP9 RESET',
     prepare: prepareHex,
     parseId: parseAvrId
@@ -640,9 +721,11 @@ async function connect() {
     $('btnId').disabled = false;
     $('st1b').innerHTML = 'Connected. Firmware <strong>' +
       pong.split(' ')[1] + '</strong>.';
+    /* Stop here: this step only establishes the link to the programmer.
+     * Checking the board is step 2, and stays a deliberate action so the
+     * student sees the result of each stage separately. */
     stage(1, true); stage(2, true);
     hideVerdict();
-    await readId();
   } catch (e) {
     if (e.name !== 'NotFoundError') log('Connect failed: ' + e.message, 'er');
   }
@@ -652,7 +735,7 @@ async function disconnect() {
   $('btnId').disabled = true;
   setDropEnabled(false);
   $('btnConnect').textContent = 'Connect';
-  $('st1b').textContent = 'Plug the programmer into USB.';
+  $('st1b').textContent = 'Plug the Pico programmer into USB.';
   $('st2b').textContent = mode.idHint;
   stage(2, false); stage(3, false);
   try {
@@ -706,30 +789,134 @@ async function readId() {
   }
 }
 
-/*
- * Fuses are read for information only — this page never writes them.
- * A bad fuse write needs a high-voltage programmer to undo, which is not
- * a repair a student can make, so the capability stays out of the
- * student-facing tool entirely.
- */
+/* ------------------------------------------------------------------
+   Fuses
+
+   Presets rather than raw hex entry. Every value below keeps SPIEN
+   programmed, so no preset can end ISP — which makes this safer than
+   typing bytes into avrdude, where a slipped digit does exactly that.
+   Raw entry is available under "Custom" for anyone who needs it.
+   ------------------------------------------------------------------ */
+
+const FUSE_PRESETS = [
+  { name: 'Internal 1 MHz',
+    note: 'Factory default. Works with no crystal fitted.',
+    l: 0xE1, h: 0x99 },
+  { name: 'Internal 8 MHz',
+    note: 'Faster, still no crystal needed. Update F_CPU in your code.',
+    l: 0xE4, h: 0x99 },
+  { name: 'External crystal',
+    note: 'Only if your board actually has a crystal fitted.',
+    l: 0xFF, h: 0x89, confirm: true },
+  { name: 'Internal 8 MHz, JTAG off',
+    note: 'Frees PORTC 2-5 for general I/O.',
+    l: 0xE4, h: 0xD9 }
+];
+
+let curFuses = null;
+
+function hex2(v) { return '0x' + v.toString(16).toUpperCase().padStart(2, '0'); }
+
+/* Decode the handful of bits a student actually cares about. Listing all
+   sixteen would bury the two that matter. */
+function describeFuses(l, h) {
+  const cksel = l & 0x0F;
+  const clock =
+    cksel === 0x1 ? 'internal 1 MHz' :
+    cksel === 0x2 ? 'internal 2 MHz' :
+    cksel === 0x3 ? 'internal 4 MHz' :
+    cksel === 0x4 ? 'internal 8 MHz' :
+    cksel === 0x0 ? 'external clock input' : 'external crystal';
+  const jtag = ((h >> 6) & 1) ? 'JTAG off' : 'JTAG on (PORTC 2-5 unavailable)';
+  return clock + ' \u00b7 ' + jtag;
+}
+
 async function readFuses() {
   const r = await ask('AVRFUSES', 6000);
   if (!r || !r.startsWith('FUSES')) return;
 
-  const l = r.match(/lfuse=(0x[0-9A-Fa-f]+)/);
-  const hf = r.match(/hfuse=(0x[0-9A-Fa-f]+)/);
+  const l = r.match(/lfuse=0x([0-9A-Fa-f]+)/);
+  const hf = r.match(/hfuse=0x([0-9A-Fa-f]+)/);
   if (!l || !hf) return;
 
+  curFuses = { l: parseInt(l[1], 16), h: parseInt(hf[1], 16) };
   $('st2b').innerHTML += '<br><span style="font-size:12px;color:var(--muted)">' +
-    'fuses ' + l[1] + ' / ' + hf[1] + '</span>';
+    describeFuses(curFuses.l, curFuses.h) + '</span>';
 
-  if (!/safe=1/.test(r)) {
+  renderFuses();
+
+  if (/risk=fatal/.test(r)) {
     const why = r.match(/why=(.*)$/);
     verdict('warn', 'Unusual fuse settings',
       "This board's fuses aren't the expected ones" +
       (why ? ': ' + why[1] : '') + '. Programming will still be attempted, ' +
       'but if it fails this is the likely reason.');
   }
+}
+
+function renderFuses() {
+  if (!curFuses) return;
+  $('fuse').className = 'fuse show';
+  $('fuseNow').innerHTML = 'Now: <b>' + hex2(curFuses.l) + ' / ' +
+    hex2(curFuses.h) + '</b> \u2014 ' + describeFuses(curFuses.l, curFuses.h);
+
+  const box = $('presets');
+  box.innerHTML = '';
+  for (const p of FUSE_PRESETS) {
+    const b = document.createElement('button');
+    const isCur = (p.l === curFuses.l && p.h === curFuses.h);
+    b.className = 'preset' + (isCur ? ' cur' : '');
+    b.innerHTML = '<span><strong>' + p.name + '</strong><br>' +
+      '<span style="font-size:12px;color:var(--muted)">' + p.note + '</span>' +
+      '</span><i>' + hex2(p.l) + ' / ' + hex2(p.h) + '</i>';
+    b.disabled = isCur || busy;
+    b.onclick = () => applyFuses(p);
+    box.appendChild(b);
+  }
+}
+
+async function applyFuses(p) {
+  if (busy || !port) return;
+
+  /* The external-clock preset is the one that can leave a board silent,
+     so it asks first — and says how to undo it, since a student who has
+     to search for that answer has already had a bad evening. */
+  if (p.confirm) {
+    const ok = confirm(
+      'Set the clock to an external crystal?\n\n' +
+      'Only do this if your board has a crystal fitted. If it does not, ' +
+      'the chip will stop responding until you feed a clock signal into ' +
+      'its XTAL1 pin.\n\nContinue?');
+    if (!ok) return;
+  }
+
+  busy = true;
+  renderFuses();
+
+  const cmd = 'AVRFUSEW ' + p.l.toString(16) + ' ' + p.h.toString(16) +
+              (p.confirm ? ' CONFIRM' : '');
+  const r = await ask(cmd, 15000);
+  busy = false;
+
+  if (r && r.startsWith('FUSEOK')) {
+    curFuses = { l: p.l, h: p.h };
+    renderFuses();
+    verdict('pass', 'Fuses changed',
+      'Now set to <strong>' + p.name + '</strong> (' + hex2(p.l) + ' / ' +
+      hex2(p.h) + '). If you changed the clock speed, update <code>F_CPU</code> ' +
+      'in your code to match, or timing and serial baud rates will be wrong.');
+    return;
+  }
+
+  if (r && /FUSE_FATAL/.test(r)) {
+    verdict('fail', 'Refused',
+      'That setting would switch off serial programming permanently, so the ' +
+      'programmer will not write it.');
+    return;
+  }
+  verdict('fail', "Couldn't change the fuses",
+    explainError(r ? r.replace(/^ERR /, '') : ''));
+  renderFuses();
 }
 
 function setDropEnabled(on) {
@@ -921,6 +1108,8 @@ function setMode(next) {
   $('mAvr').setAttribute('aria-selected', String(!isCpld));
 
   $('dropH').textContent = mode.dropHead;
+  $('drop').setAttribute('aria-label',
+    'Choose or drop a ' + mode.ext + ' file for the ' + mode.label);
   $('st2b').textContent = mode.idHint;
   $('st3b').innerHTML = 'Drop your <code>' + mode.ext + '</code> file below.';
   $('file').accept = mode.ext;
@@ -929,9 +1118,17 @@ function setMode(next) {
   setDropEnabled(false);
   hideVerdict();
   $('reg').className = 'reg';
+  $('fuse').className = 'fuse';    // fuses are an AVR-only concept
+  curFuses = null;
 
-  // Re-detect on the new pins: what counts as "connected" differs per mode.
-  if (port) readId();
+  /* Different board type means different pins, so any earlier result no
+   * longer applies. Clear it and let the student check again rather than
+   * re-running it for them — otherwise step 2 appears to complete on its
+   * own and they never learn what it does. */
+  if (port) {
+    $('st2b').textContent = mode.idHint;
+    stage(2, true);
+  }
 }
 
 /* ------------------------------------------------------------------
@@ -946,6 +1143,7 @@ if (!('serial' in navigator)) {
 $('btnConnect').onclick = () => port ? disconnect() : connect();
 $('btnId').onclick = readId;
 $('btnClear').onclick = () => { $('log').innerHTML = ''; };
+$('btnFuseClose').onclick = () => { $('fuse').className = 'fuse'; };
 
 const drop = $('drop'), fileInput = $('file');
 drop.onclick = () => { if (!drop.classList.contains('off')) fileInput.click(); };
@@ -985,6 +1183,7 @@ $('mCpld').onclick = () => setMode(MODES.cpld);
 $('mAvr').onclick = () => setMode(MODES.avr);
 
 buildCells();
+setMode(MODES.cpld);   // drive the initial copy from the mode table too
 log('Ready. Pick your board type, then connect the programmer.');
 </script>
 </body>
