@@ -68,6 +68,28 @@ int main(void){
 
  ok &= run("oversize shift rejected", "SDR 99999 TDI (0);\n", SVF_ERR_TOO_LONG);
 
+ printf("\n-- ENDIR/ENDDR are distinct (regression) --\n");
+ {
+   /* ENDIR and ENDDR differ only at index 3. If they are conflated, an
+      ENDIR sets end_dr, every SDR ends in Pause-IR, and the route back to
+      Shift-DR passes through Update-IR — silently destroying the loaded
+      instruction. Two consecutive SDRs after one SIR is what exposes it:
+      the first read succeeds and the second returns the wrong register. */
+   svf_ctx_t c; svf_init(&c);
+   const char *svf =
+     "ENDDR IDLE;\nENDIR IRPAUSE;\nSTATE RESET;\n"
+     "SIR 10 TDI (007);\n"
+     "SDR 32 TDI (0) TDO (0BADC0DE) MASK (FFFFFFFF);\n"
+     "SDR 32 TDI (0) TDO (0BADC0DE) MASK (FFFFFFFF);\n";
+   svf_result_t r = svf_feed(&c,(const uint8_t*)svf,strlen(svf));
+   if (r==SVF_OK) r = svf_finish(&c);
+   int pass = (r==SVF_OK);
+   printf("%-34s %-14s %s\n","two SDRs survive ENDIR IRPAUSE",
+          svf_result_str(r), pass?"PASS":"*** FAIL ***");
+   if(!pass){ printf("   [%s]\n", c.error_detail); }
+   ok &= pass;
+ }
+
  printf("\n-- streaming (1 byte per feed call) --\n");
  ok &= run_streamed("byte-at-a-time IDCODE check",
   "ENDIR IDLE;\nENDDR IDLE;\nSTATE RESET;\nSIR 10 TDI (006);\n"

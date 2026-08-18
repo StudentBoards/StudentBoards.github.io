@@ -226,7 +226,8 @@ bool jtag_shift(uint32_t nbits,
                 const uint8_t *mask,
                 tap_state_t shift_state,
                 tap_state_t end,
-                uint32_t *fail_bit)
+                uint32_t *fail_bit,
+                uint8_t *tdo_got)
 {
     if (nbits == 0) {
         jtag_goto(end);
@@ -238,6 +239,10 @@ bool jtag_shift(uint32_t nbits,
     bool checking = (tdo_expect != NULL);
     bool ok = true;
 
+    if (tdo_got) {
+        memset(tdo_got, 0, JTAG_TDO_CAPTURE_BYTES);
+    }
+
     for (uint32_t i = 0; i < nbits; i++) {
         bool bit = bit_get(tdi, i);
         /* Assert TMS on the final bit so we leave the shift state on the
@@ -245,6 +250,14 @@ bool jtag_shift(uint32_t nbits,
          * count come out right. */
         bool last = (i == nbits - 1);
         bool got = jtag_clock(last, bit, checking);
+
+        /* Keep the leading bits of whatever came back, so a failure can
+         * report the actual value rather than only where it differed.
+         * Capturing on every shift costs nothing and means the diagnostic
+         * is available without re-running. */
+        if (tdo_got && got && i < JTAG_TDO_CAPTURE_BYTES * 8) {
+            tdo_got[i >> 3] |= (uint8_t)(1u << (i & 7));
+        }
 
         if (checking && ok) {
             /* A NULL mask means check every bit. */

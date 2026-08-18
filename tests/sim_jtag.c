@@ -60,11 +60,13 @@ void jtag_goto(tap_state_t t){uint8_t m[16];int L=path(st,t,m);for(int i=0;i<L;i
 void jtag_run_test(uint32_t c,tap_state_t s){sim_runtest+=c;jtag_goto(s);for(uint32_t i=0;i<c;i++)jtag_clock(false,false,false);}
 static inline bool bg(const uint8_t*b,uint32_t i){return b&&((b[i>>3]>>(i&7))&1);}
 bool jtag_shift(uint32_t n,const uint8_t*tdi,const uint8_t*te,const uint8_t*mk,
-                tap_state_t ss,tap_state_t e,uint32_t*fb){
+                tap_state_t ss,tap_state_t e,uint32_t*fb,uint8_t*tg){
  if(!n){jtag_goto(e);return true;} jtag_goto(ss);
  bool chk=(te!=NULL),ok=true;
+ if(tg) memset(tg,0,JTAG_TDO_CAPTURE_BYTES);
  for(uint32_t i=0;i<n;i++){bool b=bg(tdi,i),last=(i==n-1);
-  bool got=jtag_clock(last,b,chk);
+  bool got=jtag_clock(last,b,true);
+  if(tg&&got&&i<JTAG_TDO_CAPTURE_BYTES*8) tg[i>>3]|=(uint8_t)(1u<<(i&7));
   if(chk&&ok){bool care=mk?bg(mk,i):true;
    if(care&&got!=bg(te,i)){ok=false;if(fb)*fb=i;}}}
  jtag_goto(e); return ok;}

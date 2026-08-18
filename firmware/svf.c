@@ -145,19 +145,41 @@ static svf_result_t do_shift(svf_ctx_t *ctx, const char *body,
     if (!has_tdi) memset(buf_tdi, 0, (nbits + 7) / 8);
 
     uint32_t fail_bit = 0;
+    uint8_t got[JTAG_TDO_CAPTURE_BYTES];
+
     bool ok = jtag_shift((uint32_t)nbits,
                          buf_tdi,
                          has_tdo ? buf_tdo : NULL,
                          has_mask ? buf_mask : NULL,
-                         shift_state, end, &fail_bit);
+                         shift_state, end, &fail_bit, got);
 
     ctx->total_bits += (uint32_t)nbits;
 
     if (!ok) {
         ctx->error_bit = fail_bit;
+
+        /*
+         * Report the value, not just where it differed. A bit index cannot
+         * distinguish "the device stopped answering" (all ones or all
+         * zeros) from "the device answered, with data for a different
+         * part" — and those need completely different fixes.
+         *
+         * Only the low 32 bits are shown; that covers the short status
+         * reads where this matters, and a longer vector's leading bits are
+         * enough to tell the two cases apart.
+         */
+        unsigned long shown = (nbits < 32) ? (unsigned long)nbits : 32;
+        uint32_t g = 0, e = 0;
+        for (unsigned long i = 0; i < shown; i++) {
+            if (got[i >> 3] & (1u << (i & 7)))     g |= (1u << i);
+            if (buf_tdo[i >> 3] & (1u << (i & 7))) e |= (1u << i);
+        }
+
         snprintf(ctx->error_detail, sizeof(ctx->error_detail),
-                 "TDO mismatch at bit %lu of %lu",
-                 (unsigned long)fail_bit, nbits);
+                 "TDO bit %lu of %lu: got 0x%0*lX expected 0x%0*lX",
+                 (unsigned long)fail_bit, nbits,
+                 (int)((shown + 3) / 4), (unsigned long)g,
+                 (int)((shown + 3) / 4), (unsigned long)e);
         return SVF_ERR_TDO_MISMATCH;
     }
     return SVF_OK;
@@ -310,8 +332,18 @@ static svf_result_t execute(svf_ctx_t *ctx, char *stmt)
         name[i] = '\0';
         tap_state_t s;
         if (!jtag_state_from_name(name, &s)) return SVF_ERR_SYNTAX;
-        if (cmd[2] == 'I') ctx->end_ir = (uint8_t)s;
-        else               ctx->end_dr = (uint8_t)s;
+
+        /*
+         * Index 3, not 2: "ENDIR" and "ENDDR" share E-N-D at 0..2 and only
+         * differ at index 3. Getting this wrong sends ENDIR's state into
+         * end_dr, so every SDR ends in Pause-IR — and the next SDR's route
+         * back to Shift-DR then passes through Update-IR, latching the
+         * Capture-IR pattern over the real instruction. The first shift
+         * after any SIR still works, which makes it look like a hardware
+         * fault rather than a parser bug.
+         */
+        if (strcmp(cmd, "ENDIR") == 0) ctx->end_ir = (uint8_t)s;
+        else                           ctx->end_dr = (uint8_t)s;
         return SVF_OK;
     }
     if (strcmp(cmd, "TRST") == 0) {

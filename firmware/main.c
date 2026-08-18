@@ -215,6 +215,15 @@ static void cmd_svf(uint32_t total)
     svf_result_t result = SVF_OK;
     absolute_time_t start = get_absolute_time();
 
+    /*
+     * FNV-1a over every byte received, reported back with the result.
+     * The host computes the same hash over what it sent, so any mismatch
+     * proves bytes were lost or reordered in transit — which otherwise
+     * looks exactly like a programming bug and is impossible to tell apart
+     * from one by staring at the failure.
+     */
+    uint32_t rx_hash = 2166136261u;
+
     while (received < total) {
         size_t want = total - received;
         if (want > sizeof(chunk)) want = sizeof(chunk);
@@ -235,6 +244,9 @@ static void cmd_svf(uint32_t total)
             }
             chunk[got++] = (uint8_t)c;
         }
+        for (size_t k = 0; k < got; k++) {
+            rx_hash = (rx_hash ^ chunk[k]) * 16777619u;
+        }
         received += got;
 
         if (result == SVF_OK) {
@@ -251,16 +263,18 @@ static void cmd_svf(uint32_t total)
     int64_t ms = absolute_time_diff_us(start, get_absolute_time()) / 1000;
 
     if (result == SVF_OK) {
-        printf("DONE statements=%lu bits=%lu ms=%lld\n",
+        printf("DONE statements=%lu bits=%lu ms=%lld rx=%lu hash=%08lX\n",
                (unsigned long)ctx.statements,
                (unsigned long)ctx.total_bits,
-               (long long)ms);
+               (long long)ms,
+               (unsigned long)received, (unsigned long)rx_hash);
         led_mode = LED_PASS;
     } else {
-        printf("ERR %s statement=%lu detail=%s\n",
+        printf("ERR %s statement=%lu detail=%s rx=%lu hash=%08lX\n",
                svf_result_str(result),
                (unsigned long)ctx.error_statement,
-               ctx.error_detail);
+               ctx.error_detail,
+               (unsigned long)received, (unsigned long)rx_hash);
         led_mode = LED_FAIL;
     }
 }
@@ -565,6 +579,78 @@ static void cmd_avr_verify(uint32_t total)
     led_mode = LED_FAIL;
 }
 
+/*
+ * DIAG — exercise the JTAG primitives independently of any SVF.
+ *
+ * When an SVF fails partway through, the useful question is whether the
+ * basic TAP machinery works at all. These four checks use different
+ * registers and different instructions, so agreement between them is real
+ * evidence the wiring and state machine are sound — which narrows a
+ * failure down to the programming sequence rather than the plumbing.
+ */
+static void cmd_diag(void)
+{
+    printf("DIAG start\n");
+
+    /* 1. IDCODE, loaded automatically by Test-Logic-Reset. */
+    uint32_t id = jtag_read_idcode();
+    printf("DIAG idcode 0x%08lX %s\n", (unsigned long)id, idcode_name(id));
+
+    /*
+     * 2. Capture-IR must load a value whose two least significant bits are
+     * '01' — IEEE 1149.1 mandates it. Reading that back proves we can
+     * navigate to Shift-IR and sample TDO correctly, with no dependence on
+     * any vendor instruction.
+     */
+    jtag_reset();
+    jtag_goto(TAP_IRSHIFT);
+    uint32_t cap = 0;
+    for (int i = 0; i < 10; i++) {
+        if (jtag_clock(i == 9, true, true)) cap |= (1u << i);
+    }
+    jtag_goto(TAP_IDLE);
+    printf("DIAG ircapture 0x%03lX %s\n", (unsigned long)(cap & 0x3FF),
+           ((cap & 3) == 1) ? "ok" : "BAD (expected low bits 01)");
+
+    /* 3. Total IR length: 10 for a single MAX V. */
+    int irlen = -1;
+    {
+        jtag_reset();
+        jtag_goto(TAP_IRSHIFT);
+        for (int i = 0; i < 64; i++) jtag_clock(false, true, false);
+        for (int i = 1; i <= 65; i++) {
+            if (!jtag_clock(false, false, true)) { irlen = i - 1; break; }
+        }
+        jtag_goto(TAP_IDLE);
+        jtag_reset();
+    }
+    printf("DIAG irlen %d %s\n", irlen, (irlen == 10) ? "ok" : "unexpected");
+
+    /*
+     * 4. BYPASS shift delay. All-ones in IR selects BYPASS on every device
+     * (IEEE mandates it), giving a one-bit register per device. Pushing a
+     * marker through and counting clocks gives the device count from a
+     * completely different path than the IDCODE scan above.
+     */
+    int devices = -1;
+    {
+        jtag_reset();
+        jtag_goto(TAP_IRSHIFT);
+        for (int i = 0; i < 64; i++) jtag_clock(false, true, false);
+        jtag_goto(TAP_DRSHIFT);
+        for (int i = 0; i < 40; i++) jtag_clock(false, false, false);
+        for (int i = 1; i <= 40; i++) {
+            if (jtag_clock(false, i == 1, true)) { devices = i - 1; break; }
+        }
+        jtag_goto(TAP_IDLE);
+        jtag_reset();
+    }
+    printf("DIAG bypass %d %s\n", devices,
+           (devices == 1) ? "ok (single device)" : "unexpected");
+
+    printf("DIAG done\n");
+}
+
 /* ------------------------------------------------------------------ */
 /* Main                                                               */
 /* ------------------------------------------------------------------ */
@@ -613,6 +699,8 @@ int main(void)
             } else {
                 cmd_svf((uint32_t)n);
             }
+        } else if (strcmp(verb, "DIAG") == 0) {
+            cmd_diag();
         } else if (strcmp(verb, "AVRID") == 0) {
             cmd_avr_id();
         } else if (strcmp(verb, "AVRFUSES") == 0) {

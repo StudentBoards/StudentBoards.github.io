@@ -1136,11 +1136,60 @@ function explainError(detail) {
   const d = (detail || '').trim();
 
   if (/TDO_MISMATCH/.test(d)) {
-    return 'The CPLD returned something different from what the file expected.' +
-      '<ul><li>Is this SVF built for the part on your board? ' +
-      'A 5M160Z file won\u2019t program a 5M80Z.</li>' +
-      '<li>Long or unshielded jumper wires — keep them short</li>' +
-      '<li>Check the ground connection</li></ul><code>' + d + '</code>';
+    /* The value the chip returned tells us which fault this is, so read it
+       and give the matching advice rather than a generic checklist. */
+    const m = d.match(/got 0x([0-9A-F]+) expected 0x([0-9A-F]+)/);
+    let lead = 'The CPLD returned something different from what the file expected.';
+    let bullets;
+
+    if (m) {
+      const got = m[1];
+      const bits = parseInt(got, 16).toString(2).padStart(got.length * 4, '0');
+      const ones = (bits.match(/1/g) || []).length;
+      const zeros = bits.length - ones;
+
+      /* Judge by proportion, not an exact all-Fs match. A value like
+         0xFFFE is one real bit followed by the pull-up — the chip stopped
+         driving TDO. Testing for a solid run of Fs misses that and sends
+         the user off checking their part number for nothing. */
+      const mostlyOnes = ones >= bits.length - 2;
+      const mostlyZeros = zeros >= bits.length - 2;
+
+      if (mostlyOnes || mostlyZeros) {
+        const exact = (ones === bits.length) || (zeros === bits.length);
+        lead = 'The CPLD stopped driving the TDO line partway through this ' +
+               'read &mdash; it returned ' +
+               (exact ? 'all ' : 'almost all ') +
+               (mostlyOnes ? 'ones' : 'zeros') +
+               '. The chip only drives TDO while it is shifting, so this ' +
+               'means its internal state machine and the programmer ' +
+               'disagreed about where they were.';
+        bullets =
+          '<li>Long or unshielded jumper wires &mdash; keep them short, and ' +
+          'give TCK its own ground return if you can</li>' +
+          '<li>Check the ground connection between programmer and board</li>' +
+          '<li><strong>Try a slower clock</strong> &mdash; this is the usual ' +
+          'fix, and it also tells you whether the cause is timing</li>' +
+          '<li>Board knocked loose, or a wire came out mid-run</li>';
+      } else {
+        lead = 'The CPLD answered normally but with different data ' +
+               '(<code>0x' + got + '</code> instead of <code>0x' + m[2] +
+               '</code>), so the JTAG connection is working &mdash; this file ' +
+               "doesn't match the chip.";
+        bullets =
+          '<li><strong>Most likely: the SVF is for a different density.</strong> ' +
+          'Check the part marking on your chip against the device named above. ' +
+          'All three MAX V parts report the same JTAG ID, so a mismatched file ' +
+          "gets past the board check and only fails here.</li>" +
+          '<li>Rebuild the SVF in Quartus with the correct device selected</li>';
+      }
+    } else {
+      bullets =
+        '<li>Is this SVF built for the part on your board?</li>' +
+        '<li>Long or unshielded jumper wires &mdash; keep them short</li>' +
+        '<li>Check the ground connection</li>';
+    }
+    return lead + '<ul>' + bullets + '</ul><code>' + d + '</code>';
   }
   if (/^MISMATCH/.test(d)) {
     const m = d.match(/(\d+) of (\d+) bytes differ, first at (0x[0-9A-F]+)/);

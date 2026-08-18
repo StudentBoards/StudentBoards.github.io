@@ -98,7 +98,18 @@ bool jtag_shift(uint32_t nbits,
                 const uint8_t *mask,
                 tap_state_t shift_state,
                 tap_state_t end,
-                uint32_t *fail_bit);
+                uint32_t *fail_bit,
+                uint8_t *tdo_got);
+
+/*
+ * Bytes of captured TDO that jtag_shift() will write back through
+ * `tdo_got`. Reporting what actually came back is what separates the two
+ * causes of a mismatch that otherwise look identical: all-ones or
+ * all-zeros means the device stopped driving TDO, while a plausible but
+ * different value means the device is fine and the file is for a
+ * different part. A bit index alone cannot tell those apart.
+ */
+#define JTAG_TDO_CAPTURE_BYTES 8
 
 /*
  * Read the 32-bit IDCODE of a single device.
