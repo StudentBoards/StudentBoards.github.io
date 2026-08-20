@@ -373,9 +373,19 @@ static svf_result_t execute(svf_ctx_t *ctx, char *stmt)
                 double target_half_us = 500000.0 / hz;
                 double baseline_half_us = 500000.0 / FREE_RUNNING_HZ;
                 double extra = target_half_us - baseline_half_us;
-                uint32_t delay = (uint32_t)(extra + 0.999);
-                if (delay > 1000) delay = 1000;
-                jtag_edge_delay_us = delay;
+
+                /*
+                 * Clamp before the cast, not after. A frequency low enough
+                 * to make `extra` exceed uint32_t makes the conversion
+                 * undefined, and it was observed wrapping to 0 — full
+                 * speed, the exact opposite of what a slow declared
+                 * frequency must produce. Saturating in double keeps the
+                 * error on the safe side for any value a file can contain.
+                 */
+                if (extra > 1000.0) extra = 1000.0;
+                if (!(extra > 0.0))  extra = 0.0;   /* also catches NaN */
+
+                jtag_edge_delay_us = (uint32_t)(extra + 0.999);
             }
         }
         return SVF_OK;

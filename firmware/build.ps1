@@ -58,12 +58,18 @@ if (-not (Test-Path $sdkRoot)) {
 # hardcoding a version means this script keeps working after the extension
 # updates itself.
 function Get-SdkComponent([string]$name) {
-    $dir = Get-ChildItem (Join-Path $sdkRoot $name) -Directory -ErrorAction SilentlyContinue |
-           Sort-Object Name -Descending | Select-Object -First 1
-    if (-not $dir) {
+    $dirs = @(Get-ChildItem (Join-Path $sdkRoot $name) -Directory -ErrorAction SilentlyContinue)
+    if ($dirs.Count -eq 0) {
         Write-Error "Could not find $name under $sdkRoot - re-run the extension's Import Project step."
         exit 1
     }
+    # Sort on the numeric runs in the name, zero-padded, so 2.10.0 beats
+    # 2.9.0 and 15_2_Rel1 beats 9_2_Rel1. A plain string sort gets both of
+    # those backwards and would silently build against the older install.
+    $dir = $dirs | Sort-Object @{ Expression = {
+        ([regex]::Matches($_.Name, '\d+') |
+            ForEach-Object { $_.Value.PadLeft(6, '0') }) -join '.'
+    }} -Descending | Select-Object -First 1
     return $dir.FullName
 }
 
@@ -94,6 +100,13 @@ foreach ($t in $targets) {
     $buildDir = Join-Path $firmwareDir $t.Dir
     New-Item -ItemType Directory -Force -Path $buildDir | Out-Null
 
+    # Delete any previous .uf2 first, so its existence afterwards proves THIS
+    # build produced it. Without that, a build that fails while an older file
+    # is still lying around would sail past the check below and -Release would
+    # publish a stale binary as if it were current.
+    $uf2 = Join-Path $buildDir "pico_programmer.uf2"
+    Remove-Item $uf2 -Force -ErrorAction SilentlyContinue
+
     Push-Location $buildDir
     try {
         cmake .. -G Ninja "-DPICO_BOARD=$($t.Board)"
@@ -105,7 +118,6 @@ foreach ($t in $targets) {
         Pop-Location
     }
 
-    $uf2 = Join-Path $buildDir "pico_programmer.uf2"
     if (-not (Test-Path $uf2)) { throw "Expected $uf2 but the build didn't produce it" }
     Write-Host "Built: $uf2" -ForegroundColor Green
 

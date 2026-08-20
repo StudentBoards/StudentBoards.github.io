@@ -48,11 +48,28 @@ supply is not enough. Both boards must run at 3.3 V; the Pico's pins are not
 
 ### Making the files
 
-**CPLD** — in Quartus, once per build:
+**CPLD** — tell Quartus to write an SVF alongside its usual output, and every
+compile from then on produces one:
+
+1. Check the right device is selected under **Assignments → Device** —
+   5M40ZE64, 5M80ZE64 or 5M160ZE64, to match the marking on your chip.
+2. In that same dialog, go to **Device and Pin Options → Programming Files**
+   and tick **Serial Vector Format File (.svf)**.
+3. Compile as usual (**Processing → Start Compilation**). The `.svf` lands in
+   your project's `output_files` folder next to the `.pof`.
+
+That setting is saved in the project, so it's a one-off.
+
+To produce one by hand from an existing `.pof` instead, `quartus_cpf` does the
+same job from the Quartus Prime Command Prompt:
 
 ```
 quartus_cpf -c -q 12.0MHz -g 3.3 -n p design.pof design.svf
 ```
+
+The `-q` value sets the clock speed recorded in the file, which the checkbox
+method leaves at its default. Either way the programmer never runs faster than
+the file declares, so a lower figure only makes programming slower.
 
 **AVR** — use the `.hex` your compiler or IDE produces (not the `.elf`).
 
@@ -95,8 +112,19 @@ cmake .. -DPICO_BOARD=pico      # or -DPICO_BOARD=pico2
 make -j4
 ```
 
-Produces `pico_programmer.uf2`. Builds warning-free; roughly 84 KB flash and
-38 KB RAM, comfortable on either Pico.
+Produces `pico_programmer.uf2`. Builds warning-free; roughly 111 KB flash and
+38 KB RAM on RP2040 (109 KB / 37 KB on RP2350), comfortable on either Pico.
+
+On Windows, `firmware/build.ps1` does all of the above in one step, using the
+SDK and toolchain the Pico VS Code extension installs under
+`%USERPROFILE%\.pico-sdk`:
+
+```powershell
+cd firmware
+.\build.ps1                  # both boards
+.\build.ps1 -Board pico      # one board
+.\build.ps1 -Board both -Release   # also update the committed .uf2 files
+```
 
 The two `.uf2` files are **not** interchangeable — they carry different UF2
 family IDs (`0xE48BFF56` for RP2040, `0xE48BFF57` for RP2350). Copying the

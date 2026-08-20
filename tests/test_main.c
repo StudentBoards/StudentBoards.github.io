@@ -118,6 +118,22 @@ int main(void){
           pass?"PASS":"*** FAIL ***");
    ok &= pass;
  }
+ {
+   /* An absurdly low frequency once produced delay=0 — the FASTEST setting,
+      the exact opposite of what it must do. The subtraction overflowed what
+      a uint32_t can hold, and the out-of-range double->unsigned cast is
+      undefined; here it wrapped to zero. Clamping happens in double now, so
+      any value a file can contain saturates to the slowest setting. */
+   svf_ctx_t c; svf_init(&c);
+   jtag_edge_delay_us = 0;
+   svf_result_t r = svf_feed(&c,(const uint8_t*)"FREQUENCY 1E-300 HZ;\n",21);
+   if (r==SVF_OK) r = svf_finish(&c);
+   int pass = (r==SVF_OK && jtag_edge_delay_us==1000);
+   printf("%-34s %-14s delay=%-4lu %s\n","absurdly low freq saturates slow",
+          svf_result_str(r), (unsigned long)jtag_edge_delay_us,
+          pass?"PASS":"*** FAIL ***");
+   ok &= pass;
+ }
 
  printf("\n-- streaming (1 byte per feed call) --\n");
  ok &= run_streamed("byte-at-a-time IDCODE check",
