@@ -352,7 +352,32 @@ static svf_result_t execute(svf_ctx_t *ctx, char *stmt)
         return SVF_OK;
     }
     if (strcmp(cmd, "FREQUENCY") == 0) {
-        /* Our clock rate is set by jtag_edge_delay_us, not by the file. */
+        /*
+         * RUNTEST waits on MAX V are flash erase/program delays expressed
+         * as a TCK count, computed by Quartus from this declared frequency
+         * — in a real file they are over 99% of all clocks. Running slower
+         * than declared just stretches those waits, which is harmless;
+         * running faster shortens them below what the silicon needs and
+         * truncates a flash write, which fails intermittently and looks
+         * exactly like flaky hardware. So this only ever slows the clock
+         * down from its free-running rate, never speeds it up — a file
+         * declaring a frequency above what we already run at changes
+         * nothing, and rounding always favours "too slow" over "too fast".
+         */
+        double hz = strtod(body, NULL);   /* "1.80E+07 HZ": stops at the space */
+        if (hz > 0.0) {
+            const double FREE_RUNNING_HZ = 2.8e6;
+            if (hz >= FREE_RUNNING_HZ) {
+                jtag_edge_delay_us = 0;
+            } else {
+                double target_half_us = 500000.0 / hz;
+                double baseline_half_us = 500000.0 / FREE_RUNNING_HZ;
+                double extra = target_half_us - baseline_half_us;
+                uint32_t delay = (uint32_t)(extra + 0.999);
+                if (delay > 1000) delay = 1000;
+                jtag_edge_delay_us = delay;
+            }
+        }
         return SVF_OK;
     }
     if (strcmp(cmd, "HIR") == 0 || strcmp(cmd, "HDR") == 0 ||

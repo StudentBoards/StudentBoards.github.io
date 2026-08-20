@@ -98,7 +98,8 @@ def find_port(explicit=None):
         "No Pico found.\n"
         "  - Is it plugged in?\n"
         "  - Has the firmware been flashed? (hold BOOTSEL while plugging in, "
-        "then copy pico_maxv.uf2 to the RPI-RP2 drive)\n"
+        "then copy pico1_programmer.uf2 — or pico2_programmer.uf2 for a "
+        "Pico 2 — to the RPI-RP2 drive)\n"
         "  - Run 'python3 avr.py --list' to see all serial ports.")
 
 

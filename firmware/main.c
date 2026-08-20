@@ -1,7 +1,10 @@
 /*
- * main.c — standalone MAX V programmer on a Raspberry Pi Pico.
+ * main.c — standalone board programmer on a Raspberry Pi Pico.
  *
- * Target: Altera/Intel MAX V 5M40ZE64 (works for any single MAX V device).
+ * Two independent targets, one firmware image:
+ *   - Altera/Intel MAX V (5M40ZE64 / 5M80ZE64 / 5M160ZE64) over JTAG,
+ *     from a Quartus SVF.
+ *   - ATmega32A over ISP, from an Intel HEX image.
  *
  * The Pico appears as a USB serial port (CDC). No drivers on Windows 10+,
  * macOS or Linux, and no Quartus programmer configuration — the student
@@ -263,10 +266,11 @@ static void cmd_svf(uint32_t total)
     int64_t ms = absolute_time_diff_us(start, get_absolute_time()) / 1000;
 
     if (result == SVF_OK) {
-        printf("DONE statements=%lu bits=%lu ms=%lld rx=%lu hash=%08lX\n",
+        printf("DONE statements=%lu bits=%lu ms=%lld delay=%luus rx=%lu hash=%08lX\n",
                (unsigned long)ctx.statements,
                (unsigned long)ctx.total_bits,
                (long long)ms,
+               (unsigned long)jtag_edge_delay_us,
                (unsigned long)received, (unsigned long)rx_hash);
         led_mode = LED_PASS;
     } else {

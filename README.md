@@ -95,8 +95,8 @@ cmake .. -DPICO_BOARD=pico      # or -DPICO_BOARD=pico2
 make -j4
 ```
 
-Produces `pico_maxv.uf2`. Builds warning-free; roughly 84 KB flash and 38 KB
-RAM, comfortable on either Pico.
+Produces `pico_programmer.uf2`. Builds warning-free; roughly 84 KB flash and
+38 KB RAM, comfortable on either Pico.
 
 The two `.uf2` files are **not** interchangeable — they carry different UF2
 family IDs (`0xE48BFF56` for RP2040, `0xE48BFF57` for RP2350). Copying the
