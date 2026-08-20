@@ -1,8 +1,9 @@
 # --- Pico SDK / CMake build output ---------------------------------------
 # The SDK generates a large build tree. Nothing in it is worth versioning:
-# it is fully reproducible from firmware/ with cmake + make.
-build/
-build2/
+# it is fully reproducible from firmware/ with cmake + make. Matches any
+# build directory name (build/, build2/, build_pico1/, build_pico2/, ...)
+# since one is needed per -DPICO_BOARD value and people name them freely.
+build*/
 cmake-build-*/
 CMakeFiles/
 CMakeCache.txt

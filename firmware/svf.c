@@ -352,7 +352,42 @@ static svf_result_t execute(svf_ctx_t *ctx, char *stmt)
         return SVF_OK;
     }
     if (strcmp(cmd, "FREQUENCY") == 0) {
-        /* Our clock rate is set by jtag_edge_delay_us, not by the file. */
+        /*
+         * RUNTEST waits on MAX V are flash erase/program delays expressed
+         * as a TCK count, computed by Quartus from this declared frequency
+         * — in a real file they are over 99% of all clocks. Running slower
+         * than declared just stretches those waits, which is harmless;
+         * running faster shortens them below what the silicon needs and
+         * truncates a flash write, which fails intermittently and looks
+         * exactly like flaky hardware. So this only ever slows the clock
+         * down from its free-running rate, never speeds it up — a file
+         * declaring a frequency above what we already run at changes
+         * nothing, and rounding always favours "too slow" over "too fast".
+         */
+        double hz = strtod(body, NULL);   /* "1.80E+07 HZ": stops at the space */
+        if (hz > 0.0) {
+            const double FREE_RUNNING_HZ = 2.8e6;
+            if (hz >= FREE_RUNNING_HZ) {
+                jtag_edge_delay_us = 0;
+            } else {
+                double target_half_us = 500000.0 / hz;
+                double baseline_half_us = 500000.0 / FREE_RUNNING_HZ;
+                double extra = target_half_us - baseline_half_us;
+
+                /*
+                 * Clamp before the cast, not after. A frequency low enough
+                 * to make `extra` exceed uint32_t makes the conversion
+                 * undefined, and it was observed wrapping to 0 — full
+                 * speed, the exact opposite of what a slow declared
+                 * frequency must produce. Saturating in double keeps the
+                 * error on the safe side for any value a file can contain.
+                 */
+                if (extra > 1000.0) extra = 1000.0;
+                if (!(extra > 0.0))  extra = 0.0;   /* also catches NaN */
+
+                jtag_edge_delay_us = (uint32_t)(extra + 0.999);
+            }
+        }
         return SVF_OK;
     }
     if (strcmp(cmd, "HIR") == 0 || strcmp(cmd, "HDR") == 0 ||

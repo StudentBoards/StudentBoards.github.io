@@ -90,6 +90,23 @@ mid-file. See `cmd_svf()`.
 flash erase and program waits. Overshooting is harmless; undershooting
 corrupts the cycle.
 
+**`FREQUENCY` only ever slows the clock down, never speeds it up.** Those
+`RUNTEST` waits are TCK counts Quartus computed from the frequency declared
+at the top of the SVF — in a real file they are over 99% of all clocks
+(33,992,706 `RUNTEST` clocks against 123,611 shift bits, measured). So the
+declared frequency is the unit those delays are denominated in. Running
+slower stretches them (harmless); running faster shortens them below what
+the silicon needs and truncates a flash write, which fails intermittently
+and looks like flaky hardware. `svf.c` therefore clamps
+`jtag_edge_delay_us` up from the ~2.8 MHz free-running rate when a file
+declares less, does nothing when it declares more, and always rounds toward
+slower. Current Quartus output declares 12–18 MHz, so in practice no
+slowdown is applied — this is insurance, not a fix for a current failure.
+Clamp in `double` before the cast: an out-of-range `double`→`uint32_t`
+conversion is undefined and was observed wrapping to 0, i.e. full speed,
+the exact opposite of the intent. `tests/test_main.c` covers all three
+cases and the saturation one fails against the unclamped version.
+
 **`ENDIR` and `ENDDR` are matched by full string, not by a character index.**
 They share `E-N-D` and differ only at index 3. An earlier version tested
 `cmd[2]`, so `ENDIR` set `end_dr`: every `SDR` then ended in Pause-IR, and
@@ -127,7 +144,12 @@ not work. It also cannot run in a cross-origin iframe unless the parent sets
 Google Sites shop. Chrome/Edge/Opera only.
 
 **The `.uf2` files are committed on purpose** so students can flash without a
-toolchain. `.gitignore` explicitly un-ignores them.
+toolchain. `.gitignore` explicitly un-ignores them. The current pair was
+built with Pico SDK 2.3.0 and arm-none-eabi-gcc 15.2.Rel1; that toolchain
+alone accounts for their jump from ~83 KB to ~111 KB of flash — building
+the *previous* source with it produces the same size, so the growth is not
+from any code change. Rebuild both with `firmware/build.ps1 -Release`
+rather than by hand, so the two stay in step with each other.
 
 **RP2040 and RP2350 UF2s are not interchangeable** — different family IDs
 (`0xE48BFF56` / `0xE48BFF57`). The bootloader rejects a mismatch, so it is
@@ -141,6 +163,10 @@ cd firmware && mkdir build && cd build
 cmake .. -DPICO_BOARD=pico        # or pico2
 make -j4
 ```
+
+On Windows, `firmware/build.ps1` wraps that and finds the SDK and toolchain
+the Pico VS Code extension installs under `%USERPROFILE%\.pico-sdk`:
+`.\build.ps1 -Board both -Release`.
 
 ```bash
 cd tests && ./run_tests.sh

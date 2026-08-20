@@ -4,6 +4,7 @@
 #include "../firmware/jtag.h"
 #include "../firmware/svf.h"
 extern unsigned long sim_clocks, sim_runtest;
+extern volatile uint32_t jtag_edge_delay_us;
 void svf_progress_hook(uint32_t s,uint32_t b){(void)s;(void)b;}
 
 static int run(const char*name,const char*svf,svf_result_t want){
@@ -87,6 +88,50 @@ int main(void){
    printf("%-34s %-14s %s\n","two SDRs survive ENDIR IRPAUSE",
           svf_result_str(r), pass?"PASS":"*** FAIL ***");
    if(!pass){ printf("   [%s]\n", c.error_detail); }
+   ok &= pass;
+ }
+
+ printf("\n-- FREQUENCY clamps the clock, never speeds it up --\n");
+ {
+   /* RUNTEST waits are TCK counts computed from this declared frequency, so
+      it sets a ceiling on jtag_edge_delay_us, never a floor: a file
+      declaring faster than we already run must not speed anything up, only
+      a slower one should add delay. */
+   svf_ctx_t c; svf_init(&c);
+   jtag_edge_delay_us = 0xDEAD; /* poison: any leftover value would be wrong */
+   svf_result_t r = svf_feed(&c,(const uint8_t*)"FREQUENCY 1.80E+07 HZ;\n",23);
+   if (r==SVF_OK) r = svf_finish(&c);
+   int pass = (r==SVF_OK && jtag_edge_delay_us==0);
+   printf("%-34s %-14s delay=%-4lu %s\n","18 MHz leaves free-running clock",
+          svf_result_str(r), (unsigned long)jtag_edge_delay_us,
+          pass?"PASS":"*** FAIL ***");
+   ok &= pass;
+ }
+ {
+   svf_ctx_t c; svf_init(&c);
+   jtag_edge_delay_us = 0;
+   svf_result_t r = svf_feed(&c,(const uint8_t*)"FREQUENCY 1.00E+05 HZ;\n",23);
+   if (r==SVF_OK) r = svf_finish(&c);
+   int pass = (r==SVF_OK && jtag_edge_delay_us==5);
+   printf("%-34s %-14s delay=%-4lu %s\n","100 kHz slows the clock down",
+          svf_result_str(r), (unsigned long)jtag_edge_delay_us,
+          pass?"PASS":"*** FAIL ***");
+   ok &= pass;
+ }
+ {
+   /* An absurdly low frequency once produced delay=0 — the FASTEST setting,
+      the exact opposite of what it must do. The subtraction overflowed what
+      a uint32_t can hold, and the out-of-range double->unsigned cast is
+      undefined; here it wrapped to zero. Clamping happens in double now, so
+      any value a file can contain saturates to the slowest setting. */
+   svf_ctx_t c; svf_init(&c);
+   jtag_edge_delay_us = 0;
+   svf_result_t r = svf_feed(&c,(const uint8_t*)"FREQUENCY 1E-300 HZ;\n",21);
+   if (r==SVF_OK) r = svf_finish(&c);
+   int pass = (r==SVF_OK && jtag_edge_delay_us==1000);
+   printf("%-34s %-14s delay=%-4lu %s\n","absurdly low freq saturates slow",
+          svf_result_str(r), (unsigned long)jtag_edge_delay_us,
+          pass?"PASS":"*** FAIL ***");
    ok &= pass;
  }
 

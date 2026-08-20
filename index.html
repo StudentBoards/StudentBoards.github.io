@@ -330,6 +330,8 @@ button:focus-visible{outline:2.5px solid var(--amber);outline-offset:2px}
 }
 .note p{margin-bottom:9px;max-width:62ch}
 .note code{font-family:var(--mono);font-size:12px;background:#E4EAE7;padding:1px 5px}
+.note ol{margin:0 0 9px 18px;max-width:62ch}
+.note li{margin-bottom:5px}
 
 .unsupported{
   border:1.5px solid var(--alert);border-left-width:6px;
@@ -504,8 +506,30 @@ your board is detected, then drop your file. Nothing to install.</p>
   programming. Check it matches the marking on your chip.</p>
 
   <h3>Making the files</h3>
-  <p><strong>CPLD</strong> &mdash; in Quartus, once per build:<br>
+  <p><strong>CPLD</strong> &mdash; tell Quartus to write an SVF alongside its
+  usual output, and every compile from then on produces one:</p>
+  <ol>
+    <li>Check the right device is selected under <strong>Assignments &rarr;
+    Device</strong> &mdash; 5M40ZE64, 5M80ZE64 or 5M160ZE64, to match the
+    marking on your chip.</li>
+    <li>In that same dialog, go to <strong>Device and Pin Options &rarr;
+    Programming Files</strong> and tick <strong>Serial Vector Format File
+    (.svf)</strong>.</li>
+    <li>Compile as usual (<strong>Processing &rarr; Start Compilation</strong>).
+    The <code>.svf</code> lands in your project's <code>output_files</code>
+    folder next to the <code>.pof</code>.</li>
+  </ol>
+  <p>That's a one-off setting &mdash; it's saved in the project, so after this
+  you just compile and the file is there. Drop that <code>.svf</code> onto this
+  page.</p>
+  <p>If you'd rather produce one by hand from an existing <code>.pof</code>,
+  <code>quartus_cpf</code> does the same job from the <strong>Quartus Prime
+  Command Prompt</strong>:<br>
   <code>quartus_cpf -c -q 12.0MHz -g 3.3 -n p design.pof design.svf</code></p>
+  <p>The <code>-q</code> value sets the clock speed recorded in the file, which
+  the checkbox method leaves at its default. Either way this programmer never
+  runs faster than the file declares, so a lower figure only makes programming
+  slower &mdash; it can't under-run a flash write and corrupt the chip.</p>
   <p><strong>AVR</strong> &mdash; use the <code>.hex</code> your compiler or IDE
   produces. In Microchip Studio it's under <code>Debug\</code> or
   <code>Release\</code>; with avr-gcc and a Makefile it's whatever your
