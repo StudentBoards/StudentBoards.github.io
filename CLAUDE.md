@@ -130,6 +130,24 @@ arbitrary values over serial for bench use.
 **Two cables, not one.** JTAG on Pico pins 4-7, ISP on pins 9-12. They could
 share pins with a mode switch; separate blocks mean nothing to get wrong.
 
+**The GPIO order is chosen to match the target boards, not to look tidy.**
+
+```
+Pico phys  GPIO        CPLD board       Pico phys  GPIO        AVR board
+    4      GP2   ->    pin 14  TMS          9      GP6   ->    pin 1  MOSI
+    5      GP3   ->    pin 15  TDI         10      GP7   <-    pin 2  MISO
+    6      GP4   ->    pin 16  TCK         11      GP8   ->    pin 3  SCK
+    7      GP5   <-    pin 17  TDO         12      GP9   ->    pin 4  RESET
+```
+
+Both cables run straight across with no crossovers, which is the whole
+point: students wire this from a photograph, and a cable that cannot be
+plugged in twisted beats any error message. Resist "fixing" the defines
+into a conventional order like TCK/TMS/TDI/TDO — both drivers bit-bang SIO
+and do not care which GPIO is which, so the only thing the order affects is
+whether the jumpers cross. It also happens to separate TDI from TDO, which
+used to be the classic swap.
+
 ## Constraints you cannot see from the code
 
 **MAX V does not encode density in its IDCODE.** All three CPLD parts report
@@ -137,6 +155,12 @@ share pins with a mode switch; separate blocks mean nothing to get wrong.
 JTAG. The page reads the target device from the SVF header comment instead
 (`!Device #1: 5M80Z`). Do not add code claiming to detect which part is
 fitted — it cannot be done.
+
+**The AVR board is 44-pin DIL, not DIP-40.** Nearly every ATmega32A example
+online uses the DIP-40 pinout, where RESET is pin 9. On this board it is
+pin 4. The `PBn` names (PB5 MOSI, PB6 MISO, PB7 SCK) are identical across
+both packages, so cross-check against those and not against pin numbers
+copied from a tutorial.
 
 **Web Serial needs a secure context.** HTTPS or `localhost`; `file://` will
 not work. It also cannot run in a cross-origin iframe unless the parent sets

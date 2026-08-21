@@ -17,8 +17,10 @@
  * clear pass/fail, and no driver install. Pick whichever fits — they run
  * on the same hardware, so you can reflash between them.
  *
- * WIRING (see jtag.h):
- *     GP2 -> TCK,  GP3 -> TMS,  GP4 -> TDI,  GP5 <- TDO,  GND -- GND
+ * WIRING (see jtag.h; CPLD numbers are 64-pin DIL package pins). The
+ * order matches the board so the jumpers run straight across:
+ *     GP2 -> pin 14 TMS,  GP3 -> pin 15 TDI,
+ *     GP4 -> pin 16 TCK,  GP5 <- pin 17 TDO,  GND -- GND
  *
  * PROTOCOL (line-based, over USB CDC):
  *     Host -> Pico             Pico -> Host

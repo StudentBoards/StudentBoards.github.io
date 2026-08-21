@@ -3,13 +3,27 @@
  *
  * Target: Altera/Intel MAX V 5M40ZE64 (and the rest of the MAX V family).
  *
- * WIRING — Pico GPIO to the target's JTAG header:
+ * WIRING — Pico to the CPLD board's 64-pin DIL package:
  *
- *     GP2  ->  TCK
- *     GP3  ->  TMS
- *     GP4  ->  TDI
- *     GP5  <-  TDO   (input)
- *     GND  --  GND
+ *     Pico phys  GPIO          CPLD board
+ *     ---------  ----          ----------
+ *         4      GP2    ->     pin 14   TMS
+ *         5      GP3    ->     pin 15   TDI
+ *         6      GP4    ->     pin 16   TCK
+ *         7      GP5    <-     pin 17   TDO   (input)
+ *         3      GND    --     GND
+ *
+ * THE SIGNAL ORDER HERE IS NOT ARBITRARY. Pico pins 4,5,6,7 map to board
+ * pins 14,15,16,17 in the same order, so the four jumpers run straight
+ * across with no crossovers. Students wire this from a photograph; a cable
+ * that cannot be plugged in twisted is worth more than any error message.
+ * Reordering these defines to something "logical" like TCK first breaks
+ * that property — the driver bit-bangs SIO and does not care, but the
+ * student does.
+ *
+ * A side benefit: TDI and TDO used to be neighbours at both ends, which
+ * made swapping them the classic failure. They are now two apart on each
+ * side, so the easy mistake is harder to make.
  *
  * MAX V JTAG pins sit in bank 1 and run at that bank's VCCIO. On a 3.3 V
  * board that matches RP2040 GPIO directly, so no level shifter is needed.
@@ -28,9 +42,11 @@
 #include <stdint.h>
 
 /* ---- Pin assignment ------------------------------------------------- */
-#define PIN_TCK  2
-#define PIN_TMS  3
-#define PIN_TDI  4
+/* Ordered to match the board's pin order — see WIRING above before
+ * changing these. */
+#define PIN_TMS  2
+#define PIN_TDI  3
+#define PIN_TCK  4
 #define PIN_TDO  5
 
 /* ---- TAP states ----------------------------------------------------- */
