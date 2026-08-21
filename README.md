@@ -30,22 +30,22 @@ board itself.
 
 ```
    Raspberry Pi Pico                  MAX V CPLD board
-   (64-pin DIL package)
+                                      (64-pin DIL package)
    ─────────────────────              ────────────────────
-   pin 3   GND   ────────  GND  ────  GND
-   pin 4   GP2   ────────  TCK  ───▶  pin 16
-   pin 5   GP3   ────────  TMS  ───▶  pin 14
-   pin 6   GP4   ────────  TDI  ───▶  pin 15
+   pin 4   GP2   ────────  TMS  ───▶  pin 14
+   pin 5   GP3   ────────  TDI  ───▶  pin 15
+   pin 6   GP4   ────────  TCK  ───▶  pin 16
    pin 7   GP5   ◀───────  TDO  ────  pin 17
+   pin 3   GND   ────────  GND  ────  GND
 ```
 
 | Pico pin | Signal | CPLD board pin |
 |---|---|---|
-| 3 | GND | GND |
-| 4 (GP2) | TCK | 16 |
-| 5 (GP3) | TMS | 14 |
-| 6 (GP4) | TDI | 15 |
+| 4 (GP2) | TMS | 14 |
+| 5 (GP3) | TDI | 15 |
+| 6 (GP4) | TCK | 16 |
 | 7 (GP5) | TDO | 17 |
+| 3 | GND | GND |
 
 **ATmega32A — ISP (44-pin DIL)**
 
@@ -53,20 +53,20 @@ board itself.
    Raspberry Pi Pico                  ATmega32A board
                                       (44-pin DIL package)
    ─────────────────────              ────────────────────
-   pin 8   GND   ────────  GND  ────  GND
-   pin 9   GP6   ────────  SCK  ───▶  pin 3   (PB7)
-   pin 10  GP7   ────────  MOSI ───▶  pin 1   (PB5)
-   pin 11  GP8   ◀───────  MISO ────  pin 2   (PB6)
+   pin 9   GP6   ────────  MOSI ───▶  pin 1   (PB5)
+   pin 10  GP7   ◀───────  MISO ────  pin 2   (PB6)
+   pin 11  GP8   ────────  SCK  ───▶  pin 3   (PB7)
    pin 12  GP9   ────────  RESET ──▶  pin 4
+   pin 8   GND   ────────  GND  ────  GND
 ```
 
 | Pico pin | Signal | AVR board pin |
 |---|---|---|
-| 8 | GND | GND |
-| 9 (GP6) | SCK | 3 (PB7) |
-| 10 (GP7) | MOSI | 1 (PB5) |
-| 11 (GP8) | MISO | 2 (PB6) |
+| 9 (GP6) | MOSI | 1 (PB5) |
+| 10 (GP7) | MISO | 2 (PB6) |
+| 11 (GP8) | SCK | 3 (PB7) |
 | 12 (GP9) | RESET | 4 |
+| 8 | GND | GND |
 
 Note that most ATmega32A examples online use the DIP-40 pinout, where RESET
 is pin 9. On the 44-pin DIL board it is pin 4. The `PBn` names are the same
@@ -76,9 +76,10 @@ Always connect ground between the programmer and your board — a shared power
 supply is not enough. Both boards must run at 3.3 V; the Pico's pins are not
 5 V tolerant.
 
-The pairs worth double-checking before you blame the board: **TDI/TDO** on
-JTAG and **MOSI/MISO** on ISP. Both are adjacent at each end, and swapping
-either one looks exactly like a dead chip.
+**The four signal wires run straight across.** Pico pins 4-7 go to board
+pins 14-17 in the same order, and Pico pins 9-12 go to board pins 1-4 in the
+same order. No crossovers in either cable — if a jumper is diagonal in your
+photo, it is wrong.
 
 ### Making the files
 

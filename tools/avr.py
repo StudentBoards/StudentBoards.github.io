@@ -22,11 +22,13 @@ numbers are the 44-pin DIL package pins:
 
     Pico phys  GPIO         AVR board (44-pin DIL)
     ---------  ----         ----------------------
-        9      GP6    ->    pin 3   SCK    (PB7)
-       10      GP7    ->    pin 1   MOSI   (PB5)
-       11      GP8    <-    pin 2   MISO   (PB6)
+        9      GP6    ->    pin 1   MOSI   (PB5)
+       10      GP7    <-    pin 2   MISO   (PB6)
+       11      GP8    ->    pin 3   SCK    (PB7)
        12      GP9    ->    pin 4   RESET
       8, 13    GND    --    GND
+
+The four signal wires run straight across, in order, with no crossovers.
 
 The Pico's GPIO is 3.3 V and NOT 5 V tolerant. An ATmega32A running at
 5 V will drive MISO at 5 V and damage the Pico — only connect a board

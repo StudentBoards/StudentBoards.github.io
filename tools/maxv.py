@@ -22,14 +22,13 @@ package pins:
 
     Pico phys  GPIO         CPLD board (64-pin DIL)
     ---------  ----         -----------------------
-        3      GND    --    GND
-        4      GP2    ->    pin 16   TCK
-        5      GP3    ->    pin 14   TMS
-        6      GP4    ->    pin 15   TDI
+        4      GP2    ->    pin 14   TMS
+        5      GP3    ->    pin 15   TDI
+        6      GP4    ->    pin 16   TCK
         7      GP5    <-    pin 17   TDO
+        3      GND    --    GND
 
-TDI and TDO are the pair to get wrong — adjacent at both ends, and
-swapping them looks exactly like a dead chip.
+The four signal wires run straight across, in order, with no crossovers.
 
 Requires pyserial:   pip install pyserial
 """

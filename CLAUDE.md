@@ -130,15 +130,23 @@ arbitrary values over serial for bench use.
 **Two cables, not one.** JTAG on Pico pins 4-7, ISP on pins 9-12. They could
 share pins with a mode switch; separate blocks mean nothing to get wrong.
 
-The target end of each cable, by package pin:
+**The GPIO order is chosen to match the target boards, not to look tidy.**
 
 ```
-CPLD board (64-pin DIL)          AVR board (44-pin DIL)
-  pin 14  TMS   <- GP3             pin 1  MOSI   <- GP7
-  pin 15  TDI   <- GP4             pin 2  MISO   -> GP8
-  pin 16  TCK   <- GP2             pin 3  SCK    <- GP6
-  pin 17  TDO   -> GP5             pin 4  RESET  <- GP9
+Pico phys  GPIO        CPLD board       Pico phys  GPIO        AVR board
+    4      GP2   ->    pin 14  TMS          9      GP6   ->    pin 1  MOSI
+    5      GP3   ->    pin 15  TDI         10      GP7   <-    pin 2  MISO
+    6      GP4   ->    pin 16  TCK         11      GP8   ->    pin 3  SCK
+    7      GP5   <-    pin 17  TDO         12      GP9   ->    pin 4  RESET
 ```
+
+Both cables run straight across with no crossovers, which is the whole
+point: students wire this from a photograph, and a cable that cannot be
+plugged in twisted beats any error message. Resist "fixing" the defines
+into a conventional order like TCK/TMS/TDI/TDO — both drivers bit-bang SIO
+and do not care which GPIO is which, so the only thing the order affects is
+whether the jumpers cross. It also happens to separate TDI from TDO, which
+used to be the classic swap.
 
 ## Constraints you cannot see from the code
 

@@ -9,12 +9,17 @@
  *
  *     Pico phys  GPIO          AVR board (44-pin DIL)
  *     ---------  ----          ----------------------
- *         8      GND    --     GND
- *         9      GP6    ->     pin 3   SCK    (PB7)
- *        10      GP7    ->     pin 1   MOSI   (PB5)
- *        11      GP8    <-     pin 2   MISO   (PB6)
+ *         9      GP6    ->     pin 1   MOSI   (PB5)
+ *        10      GP7    <-     pin 2   MISO   (PB6)
+ *        11      GP8    ->     pin 3   SCK    (PB7)
  *        12      GP9    ->     pin 4   RESET
- *        13      GND    --     GND
+ *      8, 13     GND    --     GND
+ *
+ * THE SIGNAL ORDER HERE IS NOT ARBITRARY. Pico pins 9,10,11,12 map to
+ * board pins 1,2,3,4 in the same order, so the four jumpers run straight
+ * across with no crossovers — the same property the JTAG block has. Do not
+ * reorder these defines; the driver bit-bangs SIO and does not care, but a
+ * student wiring it from a photograph does.
  *
  * The AVR-side numbers are the 44-pin DIL package pins, not the DIP-40
  * numbering in most ATmega32A examples online — on DIP-40 RESET is pin 9,
@@ -41,9 +46,11 @@
 #include <stdint.h>
 
 /* ---- Pin assignment ------------------------------------------------- */
-#define PIN_SCK    6
-#define PIN_MOSI   7
-#define PIN_MISO   8
+/* Ordered to match the board's pin order — see WIRING above before
+ * changing these. */
+#define PIN_MOSI   6
+#define PIN_MISO   7
+#define PIN_SCK    8
 #define PIN_RESET  9
 
 /* ---- ATmega32A geometry --------------------------------------------- */
