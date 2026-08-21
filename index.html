@@ -332,6 +332,11 @@ button:focus-visible{outline:2.5px solid var(--amber);outline-offset:2px}
 .note code{font-family:var(--mono);font-size:12px;background:#E4EAE7;padding:1px 5px}
 .note ol{margin:0 0 9px 18px;max-width:62ch}
 .note li{margin-bottom:5px}
+.note pre.wire{
+  font-family:var(--mono);font-size:12px;line-height:1.55;
+  background:#E4EAE7;padding:10px 12px;margin-bottom:12px;
+  overflow-x:auto;white-space:pre;
+}
 
 .unsupported{
   border:1.5px solid var(--alert);border-left-width:6px;
@@ -489,10 +494,31 @@ your board is detected, then drop your file. Nothing to install.</p>
 
 <div class="note">
   <h3>Wiring</h3>
-  <p><strong>MAX V CPLD</strong> — Pico pins 4-7:
-  <code>GP2 TCK &middot; GP3 TMS &middot; GP4 TDI &middot; GP5 TDO</code>, ground on pin 3.</p>
-  <p><strong>ATmega32A</strong> — Pico pins 9-12:
-  <code>GP6 SCK &middot; GP7 MOSI &middot; GP8 MISO &middot; GP9 RESET</code>, ground on pin 8.</p>
+  <p>Pico numbers are physical pins, counted from the corner nearest the USB
+  socket. Board numbers are the package pins you can count on the board.</p>
+
+  <p><strong>MAX V CPLD</strong> — JTAG, 64-pin DIL:</p>
+<pre class="wire">   Pico                        CPLD board
+   ────────────                ──────────
+   pin 3   GND  ───── GND ───  GND
+   pin 4   GP2  ───── TCK ──▶  pin 16
+   pin 5   GP3  ───── TMS ──▶  pin 14
+   pin 6   GP4  ───── TDI ──▶  pin 15
+   pin 7   GP5  ◀──── TDO ───  pin 17</pre>
+
+  <p><strong>ATmega32A</strong> — ISP, 44-pin DIL:</p>
+<pre class="wire">   Pico                        AVR board
+   ────────────                ─────────
+   pin 8   GND  ───── GND ───  GND
+   pin 9   GP6  ───── SCK ──▶  pin 3   (PB7)
+   pin 10  GP7  ──── MOSI ──▶  pin 1   (PB5)
+   pin 11  GP8  ◀─── MISO ───  pin 2   (PB6)
+   pin 12  GP9  ─── RESET ──▶  pin 4</pre>
+
+  <p>Most ATmega32A examples online use the DIP-40 pinout, where RESET is
+  pin 9. On the 44-pin DIL board it's pin 4 — the <code>PBn</code> names are
+  the same either way, so go by those if you're checking a datasheet.</p>
+
   <p>Always connect ground between the programmer and your board — a shared
   power supply isn't enough. Both boards must run at 3.3&nbsp;V; the Pico's
   pins are not 5&nbsp;V tolerant.</p>
@@ -697,7 +723,7 @@ const MODES = {
     verifyCmd: null,
     dropHead: 'Drop your .svf file here',
     idHint: "Wire the CPLD board to the JTAG pins, then check it.",
-    pins: 'GP2 TCK · GP3 TMS · GP4 TDI · GP5 TDO',
+    pins: 'GP2→pin 16 TCK · GP3→pin 14 TMS · GP4→pin 15 TDI · GP5←pin 17 TDO',
     prepare: prepareSvf,
     parseId: parseCpldId
   },
@@ -709,7 +735,7 @@ const MODES = {
     verifyCmd: 'AVRVERIFY',
     dropHead: 'Drop your .hex file here',
     idHint: "Wire the AVR board to the ISP pins, then check it.",
-    pins: 'GP6 SCK · GP7 MOSI · GP8 MISO · GP9 RESET',
+    pins: 'GP6→pin 3 SCK · GP7→pin 1 MOSI · GP8←pin 2 MISO · GP9→pin 4 RESET',
     prepare: prepareHex,
     parseId: parseAvrId
   }

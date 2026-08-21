@@ -130,6 +130,16 @@ arbitrary values over serial for bench use.
 **Two cables, not one.** JTAG on Pico pins 4-7, ISP on pins 9-12. They could
 share pins with a mode switch; separate blocks mean nothing to get wrong.
 
+The target end of each cable, by package pin:
+
+```
+CPLD board (64-pin DIL)          AVR board (44-pin DIL)
+  pin 14  TMS   <- GP3             pin 1  MOSI   <- GP7
+  pin 15  TDI   <- GP4             pin 2  MISO   -> GP8
+  pin 16  TCK   <- GP2             pin 3  SCK    <- GP6
+  pin 17  TDO   -> GP5             pin 4  RESET  <- GP9
+```
+
 ## Constraints you cannot see from the code
 
 **MAX V does not encode density in its IDCODE.** All three CPLD parts report
@@ -137,6 +147,12 @@ share pins with a mode switch; separate blocks mean nothing to get wrong.
 JTAG. The page reads the target device from the SVF header comment instead
 (`!Device #1: 5M80Z`). Do not add code claiming to detect which part is
 fitted — it cannot be done.
+
+**The AVR board is 44-pin DIL, not DIP-40.** Nearly every ATmega32A example
+online uses the DIP-40 pinout, where RESET is pin 9. On this board it is
+pin 4. The `PBn` names (PB5 MOSI, PB6 MISO, PB7 SCK) are identical across
+both packages, so cross-check against those and not against pin numbers
+copied from a tutorial.
 
 **Web Serial needs a secure context.** HTTPS or `localhost`; `file://` will
 not work. It also cannot run in a cross-origin iframe unless the parent sets

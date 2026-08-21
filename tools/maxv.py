@@ -17,6 +17,20 @@ Other things you can do:
     python3 maxv.py design.svf -p COM4   pick the port manually
     python3 maxv.py design.svf --slow    slow the clock down (flaky wiring)
 
+WIRING (Pico pins 3-7). The CPLD-side numbers are the 64-pin DIL
+package pins:
+
+    Pico phys  GPIO         CPLD board (64-pin DIL)
+    ---------  ----         -----------------------
+        3      GND    --    GND
+        4      GP2    ->    pin 16   TCK
+        5      GP3    ->    pin 14   TMS
+        6      GP4    ->    pin 15   TDI
+        7      GP5    <-    pin 17   TDO
+
+TDI and TDO are the pair to get wrong — adjacent at both ends, and
+swapping them looks exactly like a dead chip.
+
 Requires pyserial:   pip install pyserial
 """
 

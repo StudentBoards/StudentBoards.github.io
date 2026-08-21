@@ -22,29 +22,63 @@ software to install.
 
 The two boards use different interfaces, so each needs its own cable.
 
-**MAX V CPLD — JTAG**
+Pico pin numbers below are *physical* pins, counted from the corner nearest
+the USB socket. Board pin numbers are the package pins you can count on the
+board itself.
 
-| Pico pin | Signal |
-|---|---|
-| 3 | GND |
-| 4 (GP2) | TCK |
-| 5 (GP3) | TMS |
-| 6 (GP4) | TDI |
-| 7 (GP5) | TDO |
+**MAX V CPLD — JTAG (64-pin DIL)**
 
-**ATmega32A — ISP**
+```
+   Raspberry Pi Pico                  MAX V CPLD board
+   (64-pin DIL package)
+   ─────────────────────              ────────────────────
+   pin 3   GND   ────────  GND  ────  GND
+   pin 4   GP2   ────────  TCK  ───▶  pin 16
+   pin 5   GP3   ────────  TMS  ───▶  pin 14
+   pin 6   GP4   ────────  TDI  ───▶  pin 15
+   pin 7   GP5   ◀───────  TDO  ────  pin 17
+```
 
-| Pico pin | Signal |
-|---|---|
-| 8 | GND |
-| 9 (GP6) | SCK |
-| 10 (GP7) | MOSI |
-| 11 (GP8) | MISO |
-| 12 (GP9) | RESET |
+| Pico pin | Signal | CPLD board pin |
+|---|---|---|
+| 3 | GND | GND |
+| 4 (GP2) | TCK | 16 |
+| 5 (GP3) | TMS | 14 |
+| 6 (GP4) | TDI | 15 |
+| 7 (GP5) | TDO | 17 |
+
+**ATmega32A — ISP (44-pin DIL)**
+
+```
+   Raspberry Pi Pico                  ATmega32A board
+                                      (44-pin DIL package)
+   ─────────────────────              ────────────────────
+   pin 8   GND   ────────  GND  ────  GND
+   pin 9   GP6   ────────  SCK  ───▶  pin 3   (PB7)
+   pin 10  GP7   ────────  MOSI ───▶  pin 1   (PB5)
+   pin 11  GP8   ◀───────  MISO ────  pin 2   (PB6)
+   pin 12  GP9   ────────  RESET ──▶  pin 4
+```
+
+| Pico pin | Signal | AVR board pin |
+|---|---|---|
+| 8 | GND | GND |
+| 9 (GP6) | SCK | 3 (PB7) |
+| 10 (GP7) | MOSI | 1 (PB5) |
+| 11 (GP8) | MISO | 2 (PB6) |
+| 12 (GP9) | RESET | 4 |
+
+Note that most ATmega32A examples online use the DIP-40 pinout, where RESET
+is pin 9. On the 44-pin DIL board it is pin 4. The `PBn` names are the same
+either way, so go by those if you are cross-checking a datasheet.
 
 Always connect ground between the programmer and your board — a shared power
 supply is not enough. Both boards must run at 3.3 V; the Pico's pins are not
 5 V tolerant.
+
+The pairs worth double-checking before you blame the board: **TDI/TDO** on
+JTAG and **MOSI/MISO** on ISP. Both are adjacent at each end, and swapping
+either one looks exactly like a dead chip.
 
 ### Making the files
 

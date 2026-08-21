@@ -3,13 +3,19 @@
  *
  * Target: Altera/Intel MAX V 5M40ZE64 (and the rest of the MAX V family).
  *
- * WIRING — Pico GPIO to the target's JTAG header:
+ * WIRING — Pico to the CPLD board's 64-pin DIL package:
  *
- *     GP2  ->  TCK
- *     GP3  ->  TMS
- *     GP4  ->  TDI
- *     GP5  <-  TDO   (input)
- *     GND  --  GND
+ *     Pico phys  GPIO          CPLD board
+ *     ---------  ----          ----------
+ *         3      GND    --     GND
+ *         4      GP2    ->     pin 16   TCK
+ *         5      GP3    ->     pin 14   TMS
+ *         6      GP4    ->     pin 15   TDI
+ *         7      GP5    <-     pin 17   TDO   (input)
+ *
+ * The CPLD-side numbers are the DIL package pins, which is what a student
+ * can actually count on the board. TDI and TDO are the pair to get wrong:
+ * they are adjacent on both ends and swapping them looks like a dead chip.
  *
  * MAX V JTAG pins sit in bank 1 and run at that bank's VCCIO. On a 3.3 V
  * board that matches RP2040 GPIO directly, so no level shifter is needed.

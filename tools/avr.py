@@ -17,15 +17,16 @@ Other things you can do:
     python3 avr.py --list                    list serial ports
     python3 avr.py main.hex -p COM4          pick the port manually
 
-WIRING (Pico pins 9-12, the block below the JTAG one):
+WIRING (Pico pins 9-12, the block below the JTAG one). The AVR-side
+numbers are the 44-pin DIL package pins:
 
-    Pico    AVR board
-    ------  -------------
-    GP6     SCK    (PB7)
-    GP7     MOSI   (PB5)
-    GP8     MISO   (PB6)
-    GP9     RESET  (pin 9)
-    GND     GND
+    Pico phys  GPIO         AVR board (44-pin DIL)
+    ---------  ----         ----------------------
+        9      GP6    ->    pin 3   SCK    (PB7)
+       10      GP7    ->    pin 1   MOSI   (PB5)
+       11      GP8    <-    pin 2   MISO   (PB6)
+       12      GP9    ->    pin 4   RESET
+      8, 13    GND    --    GND
 
 The Pico's GPIO is 3.3 V and NOT 5 V tolerant. An ATmega32A running at
 5 V will drive MISO at 5 V and damage the Pico — only connect a board

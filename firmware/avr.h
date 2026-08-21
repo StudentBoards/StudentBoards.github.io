@@ -7,14 +7,18 @@
  * Pico serves both board types with two separate cables and no mode
  * switch to get wrong:
  *
- *     Physical  Pico    AVR board
- *     --------  ------  -------------
- *        8      GND     GND
- *        9      GP6     SCK    (ATmega32A pin PB7)
- *       10      GP7     MOSI   (PB5)
- *       11      GP8     MISO   (PB6)
- *       12      GP9     RESET  (pin 9)
- *       13      GND     GND
+ *     Pico phys  GPIO          AVR board (44-pin DIL)
+ *     ---------  ----          ----------------------
+ *         8      GND    --     GND
+ *         9      GP6    ->     pin 3   SCK    (PB7)
+ *        10      GP7    ->     pin 1   MOSI   (PB5)
+ *        11      GP8    <-     pin 2   MISO   (PB6)
+ *        12      GP9    ->     pin 4   RESET
+ *        13      GND    --     GND
+ *
+ * The AVR-side numbers are the 44-pin DIL package pins, not the DIP-40
+ * numbering in most ATmega32A examples online — on DIP-40 RESET is pin 9,
+ * here it is pin 4. The PBn names are the same on both.
  *
  * Physical pin 8 is the GND shared with the JTAG block above, so pins
  * 3..13 form one contiguous strip: JTAG, ground, ISP.
