@@ -25,9 +25,17 @@ all 3,845 of the file's TDO verify vectors passing. That is the device
 confirming its own responses thousands of times, not just an absence of
 errors.
 
+**Confirmed again on 2026-08-22 with the board-matched pin order** (GP2/3/4/5
+= TMS/TDI/TCK/TDO, see below), running the release `.uf2` rebuilt against
+SDK 2.3.0. The reorder is verified on hardware, not merely plausible. That
+run was a pass/fail check, though, not a repeat of the vector-by-vector
+figures above.
+
 **The AVR ISP path is still untested on hardware.** It builds and the Intel
 HEX parser is tested, but no ATmega32A has been programmed with it. Expect
-the first bench run to find something.
+the first bench run to find something. It carries the same pin reorder the
+CPLD side has now had confirmed, so the straight-across ISP cable (Pico
+9-12 to board 1-4) is the first thing to check if it misbehaves.
 
 Treat bug reports from real hardware as more authoritative than anything in
 the code comments, including these. The one bug found so far
@@ -43,6 +51,7 @@ firmware/           Pico firmware (C, CMake, Pico SDK)
   jtag.c/.h         JTAG TAP driver — MAX V
   svf.c/.h          streaming SVF parser
   avr.c/.h          AVR ISP driver — ATmega32A
+  build.ps1         Windows build wrapper; -Release updates the .uf2 files
 tools/maxv.py       CLI alternative to the page, same serial protocol (CPLD)
 tools/avr.py        the same for the ATmega32A, plus a host-composed --diag
 tests/              host-side tests, no hardware needed
@@ -208,7 +217,9 @@ end-to-end parse test (gitignored).
   cable. Blocked on the ATmega32A datasheet's Programming Command Register
   table (the 15-bit command words for instructions 1a-4a) — do not
   reconstruct these from memory or from another part's datasheet.
-- Everything past "the Pico enumerates" is untested on hardware.
+- The AVR ISP path is untested on hardware; the CPLD JTAG path is not (see
+  Status). Do not restate this as a blanket "nothing is tested" — that was
+  true once and stopped being true, which is how this line rotted before.
 - `SVF_MAX_BITS` caps a single shift at 4096 bits. Fine for these MAX V
   parts; a larger device may need it raised.
 
