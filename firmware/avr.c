@@ -260,10 +260,20 @@ avr_result_t avr_write_fuses(uint8_t lfuse, uint8_t hfuse, bool confirmed)
     if (risk == FUSE_FATAL) return AVR_ERR_FUSE_UNSAFE;
     if (risk == FUSE_CONFIRM && !confirmed) return AVR_ERR_FUSE_UNSAFE;
 
+    /*
+     * Fuse writes need a fixed settling delay (t_WD_FUSE, 4.5 ms on the
+     * ATmega32A) — RDY/BSY polling is documented for the Flash/EEPROM page
+     * path, not for fuses, and cannot be trusted here: the part may not
+     * assert busy for a fuse write at all, so a poll returns "ready" before
+     * the cell has finished programming. Reading back on that false "ready"
+     * sees the OLD value and reports FUSE_VERIFY even though the write then
+     * completes correctly a few ms later. Wait the fixed time instead, with
+     * margin, before the read-back below.
+     */
     isp_cmd4(0xAC, 0xA0, 0x00, lfuse);
-    wait_ready(20);
+    sleep_ms(10);
     isp_cmd4(0xAC, 0xA8, 0x00, hfuse);
-    wait_ready(20);
+    sleep_ms(10);
 
     /*
      * Read back before reporting success. A fuse write that silently did
