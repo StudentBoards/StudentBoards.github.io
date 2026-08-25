@@ -355,9 +355,9 @@ board that is correctly connected.
   5M160ZE64 all report `0x020A50DD` and share a package, so they cannot be
   told apart over JTAG. The page reads the target device from the SVF header
   instead.
-- Neither AVR path has been run on real hardware yet. The JTAG one at least
-  rides on the SVF player that has, but that proves the transport, not the
-  AVR side of it.
+- The CPLD path has not been re-checked since the firmware gained a second
+  JTAG connector. The AVR paths both exercise the same TAP code, but the
+  CPLD pin mapping itself has not been on a board since that change.
 - Fuses cannot be *read* over JTAG. An SVF can compare a value but never
   report one, so the page's fuse panel is ISP-only. Writing fuses over JTAG
   works and checks the readback (`avr.py --jtag --set-fuses`).

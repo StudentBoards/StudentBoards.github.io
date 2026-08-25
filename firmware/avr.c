@@ -101,19 +101,34 @@ static uint8_t isp_cmd4(uint8_t a, uint8_t b, uint8_t c, uint8_t d)
 }
 
 /*
- * The busy flag (poll RDY/BSY) tells us a write has finished. Polling is
- * much faster than always waiting the datasheet's worst-case time, but a
- * bounded fallback delay is kept in case a part never clears the flag.
+ * Write settling times.
+ *
+ * THE ATmega32A HAS NO "POLL RDY/BSY" SPI INSTRUCTION. This code used to
+ * poll 0xF0 and return as soon as it read a clear busy bit. That opcode
+ * is not in Table 27-14 — the bit pattern 1111 0000 appears nowhere in
+ * the datasheet — and every RDY/BSY in that document is the physical pin
+ * on the *parallel* programming interface, not something reachable over
+ * SPI. It belongs to later AVRs (ATmega48/88/168/328); on this part the
+ * chip does not implement it, so the reply was meaningless and the poll
+ * returned immediately.
+ *
+ * The consequence was not a slow programmer but a silent one: the next
+ * page's load commands began while the previous page was still being
+ * written, and the datasheet is explicit that "accessing the SPI Serial
+ * Programming interface before the Flash write operation completes can
+ * result in incorrect programming" (section 27.9.1). Every page was
+ * disturbed, so a whole image programmed as 0xFF and the verify failed at
+ * byte 0 — which reads exactly like a wiring fault and is not one.
+ *
+ * So wait the documented fixed time instead, with margin. Table 27-13
+ * gives tWD_FLASH 4.5 ms and tWD_ERASE 9.0 ms; these are roughly double.
+ * Overshooting costs a few milliseconds across a whole image and cannot
+ * corrupt anything, which is the same trade the SVF RUNTEST handling
+ * makes. Do not "optimise" this back into a poll without first finding a
+ * poll instruction in this part's own datasheet.
  */
-static void wait_ready(uint32_t max_ms)
-{
-    absolute_time_t deadline = make_timeout_time_ms(max_ms);
-    for (;;) {
-        if ((isp_cmd4(0xF0, 0x00, 0x00, 0x00) & 1) == 0) return;
-        if (absolute_time_diff_us(get_absolute_time(), deadline) < 0) return;
-        sleep_ms(1);
-    }
-}
+#define AVR_WAIT_FLASH_MS  10    /* tWD_FLASH 4.5 ms */
+#define AVR_WAIT_ERASE_MS  20    /* tWD_ERASE 9.0 ms */
 
 avr_result_t avr_isp_enter(void)
 {
@@ -261,14 +276,14 @@ avr_result_t avr_write_fuses(uint8_t lfuse, uint8_t hfuse, bool confirmed)
     if (risk == FUSE_CONFIRM && !confirmed) return AVR_ERR_FUSE_UNSAFE;
 
     /*
-     * Fuse writes need a fixed settling delay (t_WD_FUSE, 4.5 ms on the
-     * ATmega32A) — RDY/BSY polling is documented for the Flash/EEPROM page
-     * path, not for fuses, and cannot be trusted here: the part may not
-     * assert busy for a fuse write at all, so a poll returns "ready" before
-     * the cell has finished programming. Reading back on that false "ready"
-     * sees the OLD value and reports FUSE_VERIFY even though the write then
-     * completes correctly a few ms later. Wait the fixed time instead, with
-     * margin, before the read-back below.
+     * Fuse writes need a fixed settling delay (tWD_FUSE, 4.5 ms on the
+     * ATmega32A). This was originally explained as "RDY/BSY polling is
+     * documented for the Flash/EEPROM page path, not for fuses" — that
+     * was wrong. There is no SPI poll instruction on this part at all,
+     * for fuses or for flash, so the poll this replaced was reading a
+     * reply the chip never defined. The fix was right; the reason was
+     * not. See AVR_WAIT_FLASH_MS above, which is the same bug found
+     * later on the flash path, where it silently wrote nothing.
      */
     isp_cmd4(0xAC, 0xA0, 0x00, lfuse);
     sleep_ms(10);
@@ -290,7 +305,7 @@ avr_result_t avr_write_fuses(uint8_t lfuse, uint8_t hfuse, bool confirmed)
 void avr_chip_erase(void)
 {
     isp_cmd4(0xAC, 0x80, 0x00, 0x00);
-    wait_ready(50);
+    sleep_ms(AVR_WAIT_ERASE_MS);
     /* The datasheet requires leaving and re-entering programming mode
      * after an erase on some parts; a fresh Programming Enable is
      * cheaper than diagnosing why the first page did not take. */
@@ -321,7 +336,10 @@ void avr_write_page(uint16_t page_word_addr, const uint8_t *data, uint16_t len)
              (uint8_t)((page_word_addr >> 8) & 0xFF),
              (uint8_t)(page_word_addr & 0xFF),
              0x00);
-    wait_ready(20);
+
+    /* The page is written self-timed, and touching the SPI interface
+     * before it finishes corrupts it. See AVR_WAIT_FLASH_MS above. */
+    sleep_ms(AVR_WAIT_FLASH_MS);
 }
 
 uint8_t avr_read_flash_byte(uint32_t byte_addr)
@@ -335,11 +353,14 @@ uint8_t avr_read_flash_byte(uint32_t byte_addr)
                     0x00);
 }
 
-avr_result_t avr_verify(const uint8_t *data, uint32_t len, uint32_t *bad_addr)
+avr_result_t avr_verify(const uint8_t *data, uint32_t len,
+                        uint32_t *bad_addr, uint8_t *got)
 {
     for (uint32_t a = 0; a < len; a++) {
-        if (avr_read_flash_byte(a) != data[a]) {
+        uint8_t b = avr_read_flash_byte(a);
+        if (b != data[a]) {
             if (bad_addr) *bad_addr = a;
+            if (got) *got = b;
             return AVR_ERR_VERIFY;
         }
     }

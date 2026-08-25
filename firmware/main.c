@@ -563,13 +563,21 @@ static void cmd_avr_flash(uint32_t total)
     }
 
     uint32_t bad = 0;
-    avr_result_t v = avr_verify(avr_image, total, &bad);
+    uint8_t got = 0;
+    avr_result_t v = avr_verify(avr_image, total, &bad, &got);
     avr_isp_leave();
 
     int64_t ms = absolute_time_diff_us(start, get_absolute_time()) / 1000;
 
     if (v != AVR_OK) {
-        printf("ERR VERIFY mismatch at byte %lu\n", (unsigned long)bad);
+        /* Say what came back, not just where. An all-0xFF readback means
+         * nothing was written at all; a different-but-plausible byte means
+         * the write took and the link is marginal. Those need opposite
+         * things checked, and an address alone cannot tell them apart —
+         * this message previously said only "mismatch at byte 0", which
+         * pointed at the wiring for a bug that was entirely in firmware. */
+        printf("ERR VERIFY mismatch at byte %lu: got 0x%02X expected 0x%02X\n",
+               (unsigned long)bad, got, avr_image[bad]);
         led_mode = LED_FAIL;
         return;
     }

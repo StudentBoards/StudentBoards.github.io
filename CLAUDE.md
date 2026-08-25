@@ -32,20 +32,35 @@ SDK 2.3.0. The reorder is verified on hardware, not merely plausible. That
 run was a pass/fail check, though, not a repeat of the vector-by-vector
 figures above.
 
-**The AVR ISP path is still untested on hardware.** It builds and the Intel
-HEX parser is tested, but no ATmega32A has been programmed with it. Expect
-the first bench run to find something. It carries the same pin reorder the
-CPLD side has now had confirmed, so the straight-across ISP cable (Pico
-9-12 to board 1-4) is the first thing to check if it misbehaves.
+**The AVR ISP path is proven on hardware** as of 2026-08-25. A real
+ATmega32A (signature 0x1E9502, silicon revision 10) was erased,
+programmed and verified from a 790-byte Intel HEX: `DONE bytes=790
+pages=7 ms=233`, then confirmed by an independent read-back over the
+*JTAG* interface. Two different programming interfaces agreeing on the
+flash contents is worth more than either passing alone.
 
-**The AVR JTAG path is also untested on hardware**, added 2026-08-25. It
-needs no new firmware driver: the host turns the `.hex` into an SVF and the
-existing, hardware-proven SVF player executes it. That is a real advantage
-for a first bench run — the bit-banging, TAP walk, TDO compares and RUNTEST
-waits underneath it are the same code that has programmed a 5M80ZE64 — but
-it does not make the AVR side proven, only the transport.
+The first bench run did find something, exactly as this section predicted
+it would — see "no POLL RDY/BSY" below. The failure was silent: every
+page programmed as 0xFF and the verify reported `mismatch at byte 0`,
+which reads like a wiring fault and was entirely a firmware bug.
 
-What *is* checked, without hardware:
+**The AVR JTAG path is also proven on hardware**, 2026-08-25, on the
+second JTAG connector (GP10-13). The same ATmega32A was chip-erased,
+programmed and verified entirely from a generated SVF — `DONE
+statements=148 bits=15716 ms=156` — and the result was then confirmed by
+an independent read-back over ISP. Because the generated file erases
+before it writes, a passing run proves the write happened rather than
+merely matching what was already there.
+
+Its IDCODE reads `0xA950203F`: part 0x9502, manufacturer 0x01F, and
+silicon **revision 10** in the top nibble. A naive full-word IDCODE
+compare would have rejected this chip outright, so the version-nibble
+masking is load-bearing rather than theoretical.
+
+It needed no new firmware driver: the host turns the `.hex` into an SVF
+and the existing SVF player executes it.
+
+What was checked before any of that, without hardware:
 
 - Every 15-bit command word was read off the ATmega32A's own datasheet
   (DS40002072A, Table 27-15), not carried over from the ATmega16.
@@ -62,10 +77,16 @@ was ported from: `do_flash` in its `main.c` is read but never assigned, so
 the tool emits no flash data at all. Its `.ref` files predate that and are
 still good. Do not "fix" this port to match the current avrsvf0 binary.
 
+**The CPLD path has not been re-checked since `jtag.c` gained two ports.**
+The refactor is exercised indirectly — the AVR JTAG port runs through the
+same TAP walk, shift and mask code — but the GP2-5 pin mapping itself has
+not been on a board since. Run a known-good CPLD program before trusting
+it.
+
 Treat bug reports from real hardware as more authoritative than anything in
-the code comments, including these. The one bug found so far
-(`ENDIR`/`ENDDR` conflation, see below) passed fourteen host-side tests and
-all four `DIAG` checks before hardware caught it.
+the code comments, including these. Both bugs found so far
+(`ENDIR`/`ENDDR` conflation and the RDY/BSY poll, see below) passed every
+host-side test and all four `DIAG` checks before hardware caught them.
 
 ## Layout
 
@@ -201,6 +222,34 @@ rest of the file is shifted into a TAP that has stopped listening. Over
 ISP the same value is ordinary and stays allowed, so this check lives in
 the SVF generator rather than in `avr_fuse_risk()`. That keeps the
 firmware's three-level model exactly as it was.
+
+**The ATmega32A has no POLL RDY/BSY instruction over SPI, so writes wait a
+fixed time.** This is the bug that made the ISP path fail on its first
+bench run, and it is worth understanding before anyone "improves" the
+delays back into a poll.
+
+`wait_ready()` used to send `0xF0 0x00 0x00 0x00` and return as soon as
+the reply's low bit was clear. That opcode is not in Table 27-14 — the bit
+pattern `1111 0000` appears *nowhere* in DS40002072A — and every RDY/BSY
+in that datasheet is the physical pin on the **parallel** programming
+interface, not something reachable over SPI. It belongs to later AVRs
+(ATmega48/88/168/328). This part simply does not implement it, so the poll
+was reading an undefined reply and returning immediately.
+
+The symptom was not slowness. The next page's load commands began while
+the previous page was still being written, and section 27.9.1 is explicit
+that "accessing the SPI Serial Programming interface before the Flash
+write operation completes can result in incorrect programming". Every page
+was disturbed, the whole image stayed 0xFF, and the verify failed at byte
+0 — indistinguishable from a wiring fault, and the reported reason for
+weeks. `avr_write_page()` and `avr_chip_erase()` now sleep tWD_FLASH and
+tWD_ERASE (Table 27-13: 4.5 ms and 9.0 ms) with roughly double margin.
+
+The fuse path had already been patched around this in a previous session
+without the cause being identified — its comment claimed polling was
+"documented for the Flash/EEPROM page path", which was never true. That
+comment is corrected in place. If a wait here ever needs shortening, find
+a poll instruction in *this part's* datasheet first; there is not one.
 
 **SPIEN is fatal, CKSEL is not.** `avr_fuse_risk()` returns three levels.
 Unprogramming SPIEN switches ISP off permanently — refused with no override.
@@ -415,9 +464,11 @@ flash afterwards.
 
 ## Open items
 
-- Neither AVR path has run on hardware; the CPLD JTAG path has (see
-  Status). Do not restate this as a blanket "nothing is tested" — that was
-  true once and stopped being true, which is how this line rotted before.
+- All three paths have now run on hardware (see Status). The CPLD path
+  has not been re-checked since `jtag.c` gained a second port, which is
+  the one outstanding bench item. Do not restate any of this as a blanket
+  "nothing is tested" — that was true once and stopped being true, which
+  is how this line rotted before.
 - **A SPIEN-disabled chip is now recoverable**, since JTAG programming does
   not depend on SPIEN. This is untried, and the firmware still refuses to
   write that fuse, but it is no longer the dead end the ISP-only note
