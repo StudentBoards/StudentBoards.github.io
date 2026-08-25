@@ -32,6 +32,31 @@ SDK 2.3.0. The reorder is verified on hardware, not merely plausible. That
 run was a pass/fail check, though, not a repeat of the vector-by-vector
 figures above.
 
+**Confirmed a third time on 2026-08-25, after `jtag.c` gained two ports.**
+The same 5M80Z file replayed identically — `DONE statements=11595
+bits=123611` — with all four `DIAG` checks passing (IDCODE, IRCAPTURE
+0x155, IR length 10, BYPASS single-device). Those use different registers
+and instructions, so their agreement is what makes this more than one
+lucky run.
+
+It took **10.8 s against the ~8 s measured before the refactor**, and that
+slowdown is real and expected. The pin masks and the TAP state moved from
+compile-time constants to fields reached through the active-port pointer,
+so the bit-bang loop now does a few loads per edge where it used to use
+immediates — and with over 99% of all clocks coming from `RUNTEST`, any
+per-clock cost shows up directly in the total. Nothing about correctness
+changes: running slower stretches those flash waits, which is the safe
+direction, and the free-running rate is still above the 2.8 MHz `svf.c`
+assumes when clamping a declared frequency. Worth recovering only if a
+programming run ever feels slow, and not worth destabilising a proven
+bit-bang loop for 2.8 s.
+
+**Both boards were wired at once throughout.** 24 interleaved port
+switches all read the correct IDCODE, the selection survived unrelated
+commands, and after the 10-second CPLD programming run the AVR still
+verified over both ISP and JTAG. There is no cross-talk between the three
+connectors.
+
 **The AVR ISP path is proven on hardware** as of 2026-08-25. A real
 ATmega32A (signature 0x1E9502, silicon revision 10) was erased,
 programmed and verified from a 790-byte Intel HEX: `DONE bytes=790
@@ -76,12 +101,6 @@ Note that avrsvf0's own `make test` does **not** pass at the commit this
 was ported from: `do_flash` in its `main.c` is read but never assigned, so
 the tool emits no flash data at all. Its `.ref` files predate that and are
 still good. Do not "fix" this port to match the current avrsvf0 binary.
-
-**The CPLD path has not been re-checked since `jtag.c` gained two ports.**
-The refactor is exercised indirectly — the AVR JTAG port runs through the
-same TAP walk, shift and mask code — but the GP2-5 pin mapping itself has
-not been on a board since. Run a known-good CPLD program before trusting
-it.
 
 Treat bug reports from real hardware as more authoritative than anything in
 the code comments, including these. Both bugs found so far
@@ -464,11 +483,11 @@ flash afterwards.
 
 ## Open items
 
-- All three paths have now run on hardware (see Status). The CPLD path
-  has not been re-checked since `jtag.c` gained a second port, which is
-  the one outstanding bench item. Do not restate any of this as a blanket
-  "nothing is tested" — that was true once and stopped being true, which
-  is how this line rotted before.
+- All three paths have now run on hardware, with both boards wired at
+  once (see Status). Do not restate this as a blanket "nothing is tested"
+  — that was true once and stopped being true, which is how this line
+  rotted before. What is *not* covered: EEPROM, lock bits, and any AVR
+  other than the ATmega32A.
 - **A SPIEN-disabled chip is now recoverable**, since JTAG programming does
   not depend on SPIEN. This is untried, and the firmware still refuses to
   write that fuse, but it is no longer the dead end the ISP-only note

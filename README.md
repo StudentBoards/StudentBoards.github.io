@@ -355,9 +355,10 @@ board that is correctly connected.
   5M160ZE64 all report `0x020A50DD` and share a package, so they cannot be
   told apart over JTAG. The page reads the target device from the SVF header
   instead.
-- The CPLD path has not been re-checked since the firmware gained a second
-  JTAG connector. The AVR paths both exercise the same TAP code, but the
-  CPLD pin mapping itself has not been on a board since that change.
+- Programming a CPLD takes about 10.8 s for a 5M80Z, a little slower than
+  before the second JTAG connector was added: selecting a connector at
+  runtime costs a few instructions per clock edge, and over 99% of the
+  clocks in an SVF are RUNTEST delays. It has no effect on correctness.
 - Fuses cannot be *read* over JTAG. An SVF can compare a value but never
   report one, so the page's fuse panel is ISP-only. Writing fuses over JTAG
   works and checks the readback (`avr.py --jtag --set-fuses`).
