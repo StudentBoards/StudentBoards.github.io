@@ -166,7 +166,17 @@ uint8_t avr_read_flash_byte(uint32_t byte_addr);
 
 /* Verify `len` bytes of flash against `data`. On mismatch, *bad_addr is
  * set to the first differing byte address. */
-avr_result_t avr_verify(const uint8_t *data, uint32_t len, uint32_t *bad_addr);
+/*
+ * Compare flash against `data`. On a mismatch *bad_addr is the first
+ * differing address and *got is what the chip actually returned there.
+ *
+ * Reporting the value, not just the address, is what separates the two
+ * failures that look identical otherwise: 0xFF everywhere means nothing
+ * was written at all, while a plausible-but-different byte means the
+ * write happened and the link is marginal. Either pointer may be NULL.
+ */
+avr_result_t avr_verify(const uint8_t *data, uint32_t len,
+                        uint32_t *bad_addr, uint8_t *got);
 
 /* Per-edge delay in microseconds, set by avr_isp_enter(). */
 extern volatile uint32_t avr_sck_delay_us;

@@ -29,6 +29,23 @@
 #define SVF_MAX_BITS   4096
 #define SVF_MAX_BYTES  (SVF_MAX_BITS / 8)
 
+/*
+ * Largest single statement, in bytes of text.
+ *
+ * Quartus MAX V output never comes close to this; the AVR-over-JTAG path
+ * does. A PROG_PAGEREAD verify of one 128-byte flash page is a single
+ * 1032-bit shift carrying TDO and MASK vectors of 258 hex digits each,
+ * which is 537 characters — just over the 512 this used to be. Splitting
+ * it is not an option, because SVF has no way to express half a compare.
+ *
+ * The alternative is verifying a word at a time, which works within 512
+ * but costs roughly ten times the bytes over USB. So the host asks what
+ * this firmware can take (INFO reports max_stmt_bytes) and picks the
+ * compact form only when it fits, which keeps older firmware working
+ * instead of failing with a TOO_LONG a student cannot act on.
+ */
+#define SVF_MAX_STMT   1024
+
 typedef enum {
     SVF_OK = 0,
     SVF_ERR_SYNTAX,
@@ -40,7 +57,7 @@ typedef enum {
 
 typedef struct {
     /* Statement accumulator. */
-    char     stmt[512];
+    char     stmt[SVF_MAX_STMT];
     uint32_t stmt_len;
     bool     in_comment;       /* inside a ! or // comment, to end of line */
 

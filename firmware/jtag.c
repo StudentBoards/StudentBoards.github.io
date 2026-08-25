@@ -10,13 +10,67 @@
 
 volatile uint32_t jtag_edge_delay_us = 0;
 
-static tap_state_t current_state = TAP_RESET;
+/*
+ * One of these per JTAG port. The masks are precomputed so the hot loop
+ * still does no shifting — moving from #define to a struct field costs a
+ * load the compiler keeps in a register, not a shift per edge, so the
+ * free-running clock rate is unchanged.
+ *
+ * `state` lives here rather than in a single global because the two ports
+ * drive genuinely separate TAP state machines. A shared variable would
+ * mean selecting the other port and then walking a TMS path computed from
+ * where the *previous* board was left standing.
+ */
+typedef struct {
+    uint8_t  tck, tms, tdi, tdo;
+    uint32_t m_tck, m_tms, m_tdi, m_tdo;
+    tap_state_t state;
+} jtag_pins_t;
 
-/* Pin masks, precomputed so the hot loop does no shifting. */
-#define M_TCK  (1u << PIN_TCK)
-#define M_TMS  (1u << PIN_TMS)
-#define M_TDI  (1u << PIN_TDI)
-#define M_TDO  (1u << PIN_TDO)
+static jtag_pins_t ports[JTAG_PORT_COUNT] = {
+    [JTAG_PORT_CPLD] = { .tck = PIN_TCK,     .tms = PIN_TMS,
+                         .tdi = PIN_TDI,     .tdo = PIN_TDO },
+    [JTAG_PORT_AVR]  = { .tck = PIN_AVR_TCK, .tms = PIN_AVR_TMS,
+                         .tdi = PIN_AVR_TDI, .tdo = PIN_AVR_TDO },
+};
+
+static jtag_port_t active = JTAG_PORT_CPLD;
+static jtag_pins_t *p = &ports[JTAG_PORT_CPLD];
+
+#define M_TCK  (p->m_tck)
+#define M_TMS  (p->m_tms)
+#define M_TDI  (p->m_tdi)
+#define M_TDO  (p->m_tdo)
+#define current_state (p->state)
+
+void jtag_select(jtag_port_t port)
+{
+    if (port >= JTAG_PORT_COUNT) return;
+    active = port;
+    p = &ports[port];
+}
+
+jtag_port_t jtag_active(void)
+{
+    return active;
+}
+
+const char *jtag_port_name(jtag_port_t port)
+{
+    switch (port) {
+    case JTAG_PORT_CPLD: return "CPLD";
+    case JTAG_PORT_AVR:  return "AVR";
+    default:             return "?";
+    }
+}
+
+/* Case-sensitive, like jtag_state_from_name() — the caller uppercases. */
+bool jtag_port_from_name(const char *name, jtag_port_t *out)
+{
+    if (strcmp(name, "CPLD") == 0) { *out = JTAG_PORT_CPLD; return true; }
+    if (strcmp(name, "AVR")  == 0) { *out = JTAG_PORT_AVR;  return true; }
+    return false;
+}
 
 /*
  * TAP transition table: [state][tms] -> next state.
@@ -73,32 +127,53 @@ bool jtag_state_from_name(const char *name, tap_state_t *out)
 
 void jtag_init(void)
 {
-    gpio_init(PIN_TCK);
-    gpio_init(PIN_TMS);
-    gpio_init(PIN_TDI);
-    gpio_init(PIN_TDO);
-
-    gpio_set_dir(PIN_TCK, GPIO_OUT);
-    gpio_set_dir(PIN_TMS, GPIO_OUT);
-    gpio_set_dir(PIN_TDI, GPIO_OUT);
-    gpio_set_dir(PIN_TDO, GPIO_IN);
-
     /*
-     * Pull-up on TDO so an unconnected target reads as a steady all-ones
-     * rather than floating noise. That turns "nothing plugged in" into a
-     * clean, repeatable reading instead of a random one.
+     * Both ports are brought up, and both are left in Test-Logic-Reset.
+     * A board on the port that is not currently selected therefore sits
+     * with its pins driven at defined idle levels rather than floating —
+     * which matters here in a way it would not with one port, because the
+     * whole point of having two is that the other board stays plugged in
+     * while this one is programmed.
      */
-    gpio_pull_up(PIN_TDO);
+    for (int i = 0; i < JTAG_PORT_COUNT; i++) {
+        jtag_pins_t *q = &ports[i];
 
-    /* Maximum drive and slew on the clock: a slow edge on TCK is what
-     * turns marginal wiring into intermittent verify failures. */
-    gpio_set_drive_strength(PIN_TCK, GPIO_DRIVE_STRENGTH_12MA);
-    gpio_set_slew_rate(PIN_TCK, GPIO_SLEW_RATE_FAST);
+        q->m_tck = 1u << q->tck;
+        q->m_tms = 1u << q->tms;
+        q->m_tdi = 1u << q->tdi;
+        q->m_tdo = 1u << q->tdo;
 
-    sio_hw->gpio_clr = M_TCK | M_TDI;
-    sio_hw->gpio_set = M_TMS;
+        gpio_init(q->tck);
+        gpio_init(q->tms);
+        gpio_init(q->tdi);
+        gpio_init(q->tdo);
 
-    jtag_reset();
+        gpio_set_dir(q->tck, GPIO_OUT);
+        gpio_set_dir(q->tms, GPIO_OUT);
+        gpio_set_dir(q->tdi, GPIO_OUT);
+        gpio_set_dir(q->tdo, GPIO_IN);
+
+        /*
+         * Pull-up on TDO so an unconnected target reads as a steady
+         * all-ones rather than floating noise. That turns "nothing
+         * plugged in" into a clean, repeatable reading instead of a
+         * random one.
+         */
+        gpio_pull_up(q->tdo);
+
+        /* Maximum drive and slew on the clock: a slow edge on TCK is what
+         * turns marginal wiring into intermittent verify failures. */
+        gpio_set_drive_strength(q->tck, GPIO_DRIVE_STRENGTH_12MA);
+        gpio_set_slew_rate(q->tck, GPIO_SLEW_RATE_FAST);
+
+        sio_hw->gpio_clr = q->m_tck | q->m_tdi;
+        sio_hw->gpio_set = q->m_tms;
+
+        jtag_select((jtag_port_t)i);
+        jtag_reset();
+    }
+
+    jtag_select(JTAG_PORT_CPLD);
 }
 
 bool jtag_clock(bool tms, bool tdi, bool read_tdo)

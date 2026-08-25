@@ -135,6 +135,38 @@ int main(void){
    ok &= pass;
  }
 
+ printf("\n-- statement length --\n");
+ {
+   /* The AVR-over-JTAG path verifies a flash page with one PROG_PAGEREAD
+      compare: SDR 1032 carrying TDO and MASK vectors of 258 hex digits
+      each, which is 537 characters. That is over the 512 this parser used
+      to accept, and splitting it is not possible — SVF has no way to
+      express half a compare. Hence SVF_MAX_STMT.
+
+      Built here rather than pasted so the length is arithmetic, not a
+      literal somebody has to keep counting. MASK is all zeros so no bits
+      are actually compared: this is a test of the parser's buffer, and
+      the simulated TAP is a MAX V that cannot produce AVR page data. */
+   static char stmt[SVF_MAX_STMT + 600];
+   int n = sprintf(stmt, "SDR 1032 TDO(");
+   for (int i = 0; i < 258; i++) stmt[n++] = 'a';
+   n += sprintf(stmt + n, ") MASK(");
+   for (int i = 0; i < 258; i++) stmt[n++] = '0';
+   n += sprintf(stmt + n, ");");
+   printf("(page-verify statement is %d bytes, cap is %d)\n",
+          n - 1, SVF_MAX_STMT - 1);
+   ok &= run("537-byte page verify fits", stmt, SVF_OK);
+ }
+ {
+   /* ...and the cap is still a cap. Without this the test above would
+      pass just as well against a parser with no limit at all. */
+   static char stmt[SVF_MAX_STMT * 2 + 64];
+   int n = sprintf(stmt, "SDR 4096 TDI(");
+   for (int i = 0; i < SVF_MAX_STMT + 8; i++) stmt[n++] = '0';
+   n += sprintf(stmt + n, ");");
+   ok &= run("over-long statement still refused", stmt, SVF_ERR_TOO_LONG);
+ }
+
  printf("\n-- streaming (1 byte per feed call) --\n");
  ok &= run_streamed("byte-at-a-time IDCODE check",
   "ENDIR IDLE;\nENDDR IDLE;\nSTATE RESET;\nSIR 10 TDI (006);\n"

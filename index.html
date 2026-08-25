@@ -39,11 +39,11 @@ body{
 /* ---- mode switch: two distinct board types, so a segmented control
        makes the choice explicit rather than inferring it from the file ---- */
 .modes{
-  display:flex;border:1.5px solid var(--ink);margin:0 0 26px;
+  display:flex;flex-wrap:wrap;border:1.5px solid var(--ink);margin:0 0 26px;
   background:var(--surface);
 }
 .modes button{
-  flex:1;background:var(--surface);color:var(--muted);
+  flex:1 1 33%;min-width:150px;background:var(--surface);color:var(--muted);
   padding:12px 10px;border:none;border-right:1.5px solid var(--rule);
   text-transform:none;letter-spacing:0;font-size:13px;
   display:flex;flex-direction:column;gap:2px;align-items:flex-start;
@@ -381,6 +381,9 @@ your board is detected, then drop your file. Nothing to install.</p>
   <button id="mAvr" role="tab" aria-selected="false">
     <b>ATmega32A</b><span>ISP &middot; .hex file</span>
   </button>
+  <button id="mAvrJtag" role="tab" aria-selected="false">
+    <b>ATmega32A</b><span>JTAG &middot; .hex file</span>
+  </button>
 </div>
 
 <details class="setup" id="setup">
@@ -497,9 +500,14 @@ your board is detected, then drop your file. Nothing to install.</p>
   <p>Pico numbers are physical pins, counted from the corner nearest the USB
   socket. Board numbers are the package pins you can count on the board.</p>
 
-  <p><strong>The four signal wires run straight across</strong> — Pico 4-7 to
-  board 14-17, and Pico 9-12 to board 1-4, both in order. No crossovers in
-  either cable. If a jumper looks diagonal, it's wrong.</p>
+  <p><strong>Every cable runs straight across</strong> — Pico 4-7 to CPLD board
+  14-17, Pico 9-12 to AVR board 1-4, and Pico 14-17 down the odd row of the
+  AVR's JTAG header. All in order, no crossovers anywhere. If a jumper looks
+  diagonal, it's wrong.</p>
+
+  <p>There are three connectors and they never conflict, so you can leave a
+  CPLD board and an AVR board wired at the same time and just pick the mode
+  at the top of the page.</p>
 
   <p><strong>MAX V CPLD</strong> — JTAG, 64-pin DIL:</p>
 <pre class="wire">   Pico                        CPLD board
@@ -522,6 +530,42 @@ your board is detected, then drop your file. Nothing to install.</p>
   <p>Most ATmega32A examples online use the DIP-40 pinout, where RESET is
   pin 9. On the 44-pin DIL board it's pin 4 — the <code>PBn</code> names are
   the same either way, so go by those if you're checking a datasheet.</p>
+
+  <p><strong>ATmega32A</strong> — JTAG, the 10-pin header on top of the board.
+  This is a <em>second, separate</em> JTAG connector on the Pico, so a CPLD
+  board and an AVR board can both stay plugged in — nothing gets swapped to
+  change target:</p>
+<pre class="wire">   Pico                        JTAG header      ATmega32A
+   ────────────                ───────────      ─────────
+   pin 14  GP10 ───── TCK ──▶  pin 1            PC2
+   pin 15  GP11 ◀──── TDO ───  pin 3            PC4
+   pin 16  GP12 ───── TMS ──▶  pin 5            PC3
+   pin 17  GP13 ───── TDI ──▶  pin 9            PC5
+   pin 18  GND  ───── GND ───  pin 2 or 10
+
+   Looking at the header, pin 1 marked:
+
+        TCK   1 ● ○  2   GND
+        TDO   3 ● ○  4   VTref
+        TMS   5 ● ○  6   nSRST
+       Vsup   7 ○ ○  8   nTRST
+        TDI   9 ● ○ 10   GND</pre>
+
+  <p>All four signals are in the odd-numbered row, so Pico pins 14-17 run
+  straight down it in order and skip only pin 7. Four parallel jumpers, no
+  crossovers, one gap at the end. Use header pin 2 for ground if you are only
+  using one — it sits next to TCK and gives the clock the shortest return
+  path.</p>
+
+  <p>Leave <code>VTref</code>, <code>Vsupply</code>, <code>nSRST</code> and
+  <code>nTRST</code> unconnected. The datasheet says programming needs nothing
+  but the four signals, and <code>Vsupply</code> in particular would try to
+  power your board from the Pico.</p>
+
+  <p>JTAG works only while the <strong>JTAGEN</strong> fuse is programmed,
+  which it is on a chip from the factory. The <em>PORTC 2-5 free</em> fuse
+  preset switches it off to free those four pins — a board set that way has to
+  be reached over ISP, and this page will say so if it happens.</p>
 
   <p>Always connect ground between the programmer and your board — a shared
   power supply isn't enough. Both boards must run at 3.3&nbsp;V; the Pico's
@@ -575,13 +619,38 @@ your board is detected, then drop your file. Nothing to install.</p>
   anything. Use it to confirm which build a board is running, or to check a
   board you don't want to disturb.</p>
 
+  <h3>ISP or JTAG?</h3>
+  <p>The ATmega32A can be programmed either way, and they reach the same flash.
+  Pick whichever cable is easier to attach: the JTAG header on top of the board
+  is usually the one you can get at. Each has its own connector on the Pico, so
+  you can wire both and switch modes here without touching anything.</p>
+  <p>JTAG also needs neither the reset nor the clock pin, so it still works on a
+  board whose clock fuses ask for a crystal that isn't fitted &mdash; the usual
+  way one of these ends up looking dead. Over ISP that board is silent until you
+  feed a signal into its XTAL1 pin.</p>
+  <p>Underneath they are quite different. ISP is a driver in the programmer's
+  firmware. JTAG is not &mdash; this page turns your <code>.hex</code> into an
+  SVF, the same format the CPLD boards use, and the programmer just plays it
+  back. That is why the JTAG mode reads an <code>IDCODE</code> where the ISP
+  mode reads a signature, and why the file being sent is a few hundred KB
+  rather than the size of your program.</p>
+  <p>Two things only ISP can do: read the fuses back, and reach a board whose
+  JTAGEN fuse has been switched off. An SVF can check a value it was given but
+  never report one, so the fuse panel is an ISP feature.</p>
+
   <h3>Fuses</h3>
   <p>Your board ships set up correctly, so for normal coursework you can ignore
-  this. If you need to change the clock speed or free up PORTC, the fuse panel
-  appears once an AVR is detected.</p>
+  this. If you need to change the clock speed or free up PORTC, switch to the
+  <strong>ISP</strong> mode &mdash; the fuse panel appears once an AVR is
+  detected there.</p>
   <p>The presets cover the settings you're likely to want &mdash; clock speed, and
   freeing PORTC 2-5 by switching off the chip's on-board debug interface. All of
   them keep ISP enabled, so none can lock you out.</p>
+  <p>One of them does switch JTAG off, though: <em>PORTC 2-5 free</em> is exactly
+  the fuse that frees those pins by disabling the JTAG interface. Apply it and
+  the JTAG mode stops working on that board until you set the fuses back over
+  ISP. Nothing is lost &mdash; ISP still reaches it &mdash; but it is worth
+  knowing before you pick it.</p>
   <p>If a board does stop responding after a fuse change, it's usually
   recoverable. A wrong clock setting means the chip has no clock &mdash; feed a
   slow square wave into its XTAL1 pin and it programs again. The one setting
@@ -713,10 +782,363 @@ function restCells() {
 /* ------------------------------------------------------------------
    Mode definitions
 
-   The two board types differ in file format, firmware commands and what
+   The board types differ in file format, firmware commands and what
    "detected" means, so each mode owns those differences in one place
    rather than scattering `if (mode === ...)` through the flow.
    ------------------------------------------------------------------ */
+
+/* ------------------------------------------------------------------
+   ATmega32A over JTAG
+
+   A port of avrsvf0 (Andreas Schweizer, GPL-2.0) — it turns a HEX file
+   into an SVF, so the AVR can be programmed through the same SVF player
+   the CPLD boards use. The firmware has no idea it is talking to an AVR;
+   everything AVR-specific is right here.
+
+   Every command word came from the ATmega32A's own datasheet
+   (DS40002072A, Table 27-15), not from the ATmega16 avrsvf0 targets.
+   They agree, but that was checked rather than assumed.
+
+   This is a mirror of tools/avrsvf.py and the two must produce identical
+   bytes; tests/test_svf_parity.py fails if they drift.
+   ------------------------------------------------------------------ */
+
+const AVRSVF = (function () {
+
+  const DEV = {
+    name: 'ATmega32A',
+    signature: [0x1E, 0x95, 0x02],
+    flash: 32768,
+    page: 128,
+    pages: 256,
+    idcode: 0x0950203F      // version | part 0x9502 | Atmel 0x01F | 1
+  };
+
+  /* The top nibble counts up with each silicon revision, so it must not
+     be compared or a later stepping stops working. */
+  const IDCODE_MASK = 0x0FFFFFFF;
+
+  const IR_PROG_ENABLE = 0x4, IR_PROG_COMMANDS = 0x5,
+        IR_PROG_PAGELOAD = 0x6, IR_PROG_PAGEREAD = 0x7,
+        IR_AVR_RESET = 0xC;
+  const PROG_ENABLE_SIGNATURE = 0xA370;
+
+  /* 15-bit Programming Command Register words, Table 27-15. The table's
+     0100011_10000000 is 0x2380 here. */
+  const CHIP_ERASE = [0x2380, 0x3180, 0x3380, 0x3380];         // 1a
+  const ENTER_FLASH_WRITE = 0x2310;                            // 2a
+  const LOAD_ADDR_HIGH = 0x0700, LOAD_ADDR_LOW = 0x0300;       // 2b, 2c
+  const LOAD_DATA_LOW = 0x1300;                                // 2d, 6b
+  const WRITE_FLASH_PAGE = [0x3700, 0x3500, 0x3700, 0x3700];   // 2g
+  const ENTER_FLASH_READ = 0x2302;                             // 3a
+  const READ_DATA_SETUP = 0x3200, READ_DATA_LOW = 0x3600,
+        READ_DATA_HIGH = 0x3700;                               // 3d
+  const ENTER_FUSE_WRITE = 0x2340;                             // 6a
+  const WRITE_FUSE_HIGH = [0x3700, 0x3500, 0x3700, 0x3700];    // 6c
+  const WRITE_FUSE_LOW = [0x3300, 0x3100, 0x3300, 0x3300];     // 6f
+  const ENTER_FUSE_READ = 0x2304;                              // 8a
+  const READ_FUSE_HIGH = [0x3E00, 0x3F00];                     // 8b
+  const READ_FUSE_LOW = [0x3200, 0x3300];                      // 8c
+  const ENTER_SIGNATURE_READ = 0x2308;                         // 9a
+  const READ_SIGNATURE = [0x3200, 0x3300];                     // 9c
+  const NO_OPERATION = [0x2300, 0x3300];                       // 11a
+
+  /* Table 27-11 caps a page or fuse write at 4.5 ms and a chip erase at
+     9 ms. These are avrsvf0's values, comfortably longer than both:
+     overshooting costs milliseconds, undershooting truncates a flash
+     write and fails intermittently in a way that looks like bad wiring. */
+  const WAIT_PAGE_WRITE = 7e-3, WAIT_CHIP_ERASE = 13e-3;
+
+  /* What firmware without a max_stmt_bytes in its INFO reply can take. */
+  const LEGACY_MAX_STMT = 512;
+
+  function h2(v) { return (v & 0xFF).toString(16).padStart(2, '0'); }
+  function h4(v) { return (v & 0xFFFF).toString(16).padStart(4, '0'); }
+  function h8(v) { return (v >>> 0).toString(16).padStart(8, '0'); }
+
+  /* Page bytes as an SVF hex vector.
+
+     Reversed: SVF writes a vector most significant bit first, while the
+     page is shifted in least significant bit first — "starting with the
+     LSB of the first instruction in the page". So the last byte of the
+     page goes at the left-hand end for the first byte to arrive first. */
+  function vector(data) {
+    let s = '';
+    for (let i = data.length - 1; i >= 0; i--) s += h2(data[i]);
+    return s;
+  }
+
+  function Writer(maxStmt) {
+    this.lines = [];
+    this.max = maxStmt;
+  }
+  Writer.prototype.comment = function (t) { this.lines.push('// ' + t); };
+  Writer.prototype.blank = function () { this.lines.push(''); };
+  Writer.prototype.stmt = function (t) {
+    /* Checked rather than trusted. An over-long statement fails on the
+       Pico as a TOO_LONG against a statement number, halfway through the
+       file, which reads like a corrupt upload — not like the actual
+       cause. Failing here names it. */
+    if (t.length > this.max - 1) {
+      throw new Error('generated a ' + t.length + '-byte statement but the ' +
+        'programmer accepts ' + (this.max - 1) + '.');
+    }
+    this.lines.push(t + ';');
+  };
+  Writer.prototype.sir = function (ir) {
+    this.stmt('SIR 4 TDI(' + ir.toString(16) + ')');
+  };
+  Writer.prototype.cmd = function (w) {
+    this.stmt('SDR 15 TDI(' + h4(w) + ')');
+  };
+  Writer.prototype.cmds = function (ws) {
+    for (const w of ws) this.cmd(w);
+  };
+  Writer.prototype.cmdExpect = function (w, expect) {
+    this.stmt('SDR 15 TDI(' + h4(w) + ') TDO(00' + h2(expect) +
+              ') MASK(00ff)');
+  };
+  Writer.prototype.runtest = function (sec) {
+    this.stmt('RUNTEST IDLE ' + (sec * 1e3).toFixed(1) + 'E-3 SEC');
+  };
+  Writer.prototype.text = function () {
+    return this.lines.join('\n') + '\n';
+  };
+
+  /* Round up to whole pages with 0xFF, the erased value, so padding a
+     part-used final page writes nothing that was not already there. */
+  function pad(image) {
+    if (image.length > DEV.flash) {
+      throw new Error('This program is ' + image.length + ' bytes, more than ' +
+        'the ATmega32A’s ' + DEV.flash + ' bytes of flash.');
+    }
+    const short = (DEV.page - (image.length % DEV.page)) % DEV.page;
+    if (!short) return image;
+    const out = new Uint8Array(image.length + short).fill(0xFF);
+    out.set(image);
+    return out;
+  }
+
+  function isBlank(d) {
+    for (const b of d) if (b !== 0xFF) return false;
+    return true;
+  }
+
+  function chooseVerifyMode(maxStmt) {
+    const needed = ('SDR ' + (8 * DEV.page + 8) + ' TDO(' +
+      'x'.repeat(2 * DEV.page + 2) + ') MASK(' +
+      'x'.repeat(2 * DEV.page + 2) + ')').length;
+    return (maxStmt - 1 >= needed) ? 'page' : 'word';
+  }
+
+  function build(opt) {
+    const image = opt.image || null;
+    const maxStmt = opt.maxStmt || LEGACY_MAX_STMT;
+    let mode = opt.verifyMode || 'auto';
+    if (mode === 'auto') mode = chooseVerifyMode(maxStmt);
+
+    const erase = opt.erase !== false;
+    const writeFlash = image !== null && opt.writeFlash !== false;
+    const verifyFlash = image !== null && opt.verifyFlash !== false;
+    const fuses = opt.fuses || null;
+
+    if (fuses && ((fuses.h >> 6) & 1)) {
+      /* JTAGEN is hfuse bit 6, active low. Over ISP that fuse is merely
+         inconvenient; over JTAG it is the branch being sawn off — it
+         takes effect immediately and the rest of the file is shifted
+         into a TAP that has stopped listening. */
+      throw new Error('That setting unprograms JTAGEN, which switches the ' +
+        'JTAG interface off. It cannot be written over JTAG, because the ' +
+        'connection would be cut partway through. Switch to the ISP mode ' +
+        'to set it.');
+    }
+
+    const s = new Writer(maxStmt);
+    s.comment(DEV.name + ' over JTAG, generated from an Intel HEX file.');
+    s.comment('Command words: ' + DEV.name +
+              ' datasheet DS40002072A, Table 27-15.');
+    s.comment('Layout after avrsvf0 by Andreas Schweizer (GPL-2.0).');
+    if (opt.note) s.comment(opt.note);
+    if (image !== null) {
+      s.comment('Program: ' + image.length + ' bytes, ' +
+        Math.ceil(image.length / DEV.page) + ' of ' + DEV.pages +
+        ' pages used.');
+    }
+    s.blank();
+
+    /* ---- preamble ---- */
+    s.stmt('TRST ABSENT');
+    s.stmt('ENDIR IDLE');
+    s.stmt('ENDDR IDLE');
+    for (const r of ['HIR', 'HDR', 'TIR', 'TDR']) s.stmt(r + ' 0');
+    s.stmt('STATE RESET');
+
+    if (opt.checkIdcode !== false) {
+      /* Test-Logic-Reset loads IDCODE on every TAP, so this needs no
+         instruction shift. Having the check inside the file means it
+         travels with it: a file aimed at the CPLD board stops here. */
+      s.comment('Is this an ' + DEV.name + '? Version nibble masked off.');
+      s.stmt('SDR 32 TDO(' + h8(DEV.idcode) + ') MASK(' + h8(IDCODE_MASK) + ')');
+    }
+
+    s.stmt('STATE IDLE');
+    s.blank();
+    s.comment('Hold the AVR in reset, then unlock programming');
+    s.sir(IR_AVR_RESET);
+    s.stmt('SDR 1 TDI(1)');
+    s.sir(IR_PROG_ENABLE);
+    s.stmt('SDR 16 TDI(' + h4(PROG_ENABLE_SIGNATURE) + ')');
+    s.blank();
+
+    /* ---- signature, before anything destructive ---- */
+    if (opt.checkSignature !== false) {
+      s.comment('Signature bytes - expect ' +
+        DEV.signature.map(b => h2(b).toUpperCase()).join(' '));
+      s.sir(IR_PROG_COMMANDS);
+      s.cmd(ENTER_SIGNATURE_READ);
+      DEV.signature.forEach((byte, i) => {
+        s.cmd(LOAD_ADDR_LOW | i);
+        s.cmd(READ_SIGNATURE[0]);
+        s.cmdExpect(READ_SIGNATURE[1], byte);
+      });
+      s.blank();
+    }
+
+    /* ---- erase ---- */
+    if (erase) {
+      s.comment('Chip erase');
+      s.sir(IR_PROG_COMMANDS);
+      s.cmds(CHIP_ERASE);
+      s.runtest(WAIT_CHIP_ERASE);
+      s.blank();
+    }
+
+    const padded = image === null ? null : pad(image);
+
+    /* ---- write ---- */
+    if (writeFlash) {
+      let count = 0;
+      for (let a = 0; a < padded.length; a += DEV.page) {
+        if (erase && isBlank(padded.subarray(a, a + DEV.page))) continue;
+        count++;
+      }
+      s.comment('Program ' + count + ' of ' + DEV.pages + ' flash pages');
+      s.sir(IR_PROG_COMMANDS);
+      s.cmd(ENTER_FLASH_WRITE);
+
+      for (let a = 0; a < padded.length; a += DEV.page) {
+        const page = padded.subarray(a, a + DEV.page);
+        /* An erased device already reads 0xFF, so a blank page has
+           nothing to do. Only safe because we erased. */
+        if (erase && isBlank(page)) continue;
+
+        const word = a >> 1;                 // PCWORD must be zero
+        s.cmd(LOAD_ADDR_HIGH | ((word >> 8) & 0xFF));
+        s.cmd(LOAD_ADDR_LOW | (word & 0xFF));
+        s.sir(IR_PROG_PAGELOAD);
+        s.stmt('SDR ' + (8 * DEV.page) + ' TDI(' + vector(page) + ')');
+        s.sir(IR_PROG_COMMANDS);
+        s.cmds(WRITE_FLASH_PAGE);
+        s.runtest(WAIT_PAGE_WRITE);
+      }
+      s.blank();
+    }
+
+    /* ---- verify ---- */
+    if (verifyFlash && mode !== 'none') {
+      if (mode === 'page') {
+        s.comment('Verify flash, one page per compare');
+        s.sir(IR_PROG_COMMANDS);
+        s.cmd(ENTER_FLASH_READ);
+        /* The first 8 bits out are undefined and must be ignored, which
+           is the trailing 00 in the mask — it sits at the LSB end, and
+           the LSB is what comes out first. */
+        const mask = 'ff'.repeat(DEV.page) + '00';
+        for (let a = 0; a < padded.length; a += DEV.page) {
+          const word = a >> 1;
+          s.cmd(LOAD_ADDR_HIGH | ((word >> 8) & 0xFF));
+          s.cmd(LOAD_ADDR_LOW | (word & 0xFF));
+          s.sir(IR_PROG_PAGEREAD);
+          /* TDI omitted: nothing is shifted into a virtual read chain,
+             so spending 258 hex digits on all-ones would only push the
+             statement past what the parser accepts. */
+          s.stmt('SDR ' + (8 * DEV.page + 8) + ' TDO(' +
+                 vector(padded.subarray(a, a + DEV.page)) + 'ff) MASK(' +
+                 mask + ')');
+          s.sir(IR_PROG_COMMANDS);
+        }
+      } else {
+        s.comment('Verify flash, one word per compare');
+        s.sir(IR_PROG_COMMANDS);
+        s.cmd(ENTER_FLASH_READ);
+        let high = null;
+        for (let a = 0; a < padded.length; a += 2) {
+          const word = a >> 1, wantHigh = (word >> 8) & 0xFF;
+          /* Note 1: a command may be skipped when the seven most
+             significant bits are already right. The high address byte
+             only moves every 256 words. */
+          if (wantHigh !== high) {
+            s.cmd(LOAD_ADDR_HIGH | wantHigh);
+            high = wantHigh;
+          }
+          s.cmd(LOAD_ADDR_LOW | (word & 0xFF));
+          s.cmd(READ_DATA_SETUP);
+          s.cmdExpect(READ_DATA_LOW, padded[a]);
+          s.cmdExpect(READ_DATA_HIGH, padded[a + 1]);
+        }
+      }
+      s.blank();
+    }
+
+    /* ---- fuses ---- */
+    if (fuses) {
+      s.comment('Fuses: low 0x' + h2(fuses.l).toUpperCase() + ', high 0x' +
+                h2(fuses.h).toUpperCase() + '  (0 = programmed)');
+      s.sir(IR_PROG_COMMANDS);
+      s.cmd(ENTER_FUSE_WRITE);
+      s.cmd(LOAD_DATA_LOW | fuses.h);
+      s.cmds(WRITE_FUSE_HIGH);
+      s.runtest(WAIT_PAGE_WRITE);
+      s.cmd(LOAD_DATA_LOW | fuses.l);
+      s.cmds(WRITE_FUSE_LOW);
+      s.runtest(WAIT_PAGE_WRITE);
+      s.blank();
+
+      if (opt.verifyFuses !== false) {
+        s.comment('Read the fuses back');
+        s.sir(IR_PROG_COMMANDS);
+        s.cmd(ENTER_FUSE_READ);
+        s.cmd(READ_FUSE_HIGH[0]);
+        s.cmdExpect(READ_FUSE_HIGH[1], fuses.h);
+        s.cmd(READ_FUSE_LOW[0]);
+        s.cmdExpect(READ_FUSE_LOW[1], fuses.l);
+        s.blank();
+      }
+    }
+
+    /* ---- postamble ---- */
+    s.comment('No-operation, then release programming and reset');
+    s.sir(IR_PROG_COMMANDS);
+    s.cmds(NO_OPERATION);
+    /* Clearing the enable register is not housekeeping: the datasheet
+       says it should always be reset when leaving programming mode. */
+    s.sir(IR_PROG_ENABLE);
+    s.stmt('SDR 16 TDI(0000)');
+    s.sir(IR_AVR_RESET);
+    s.stmt('SDR 1 TDI(0)');
+    s.stmt('STATE RESET');
+
+    return s.text();
+  }
+
+  return {
+    build: build,
+    chooseVerifyMode: chooseVerifyMode,
+    LEGACY_MAX_STMT: LEGACY_MAX_STMT,
+    IDCODE: DEV.idcode,
+    IDCODE_MASK: IDCODE_MASK
+  };
+})();
 
 const MODES = {
   cpld: {
@@ -725,6 +1147,7 @@ const MODES = {
     idCmd: 'ID',
     flashCmd: 'SVF',
     verifyCmd: null,
+    jtagPort: 'CPLD',
     dropHead: 'Drop your .svf file here',
     idHint: "Wire the CPLD board to the JTAG pins, then check it.",
     pins: 'GP2→pin 14 TMS · GP3→pin 15 TDI · GP4→pin 16 TCK · GP5←pin 17 TDO',
@@ -742,10 +1165,32 @@ const MODES = {
     pins: 'GP6→pin 1 MOSI · GP7←pin 2 MISO · GP8→pin 3 SCK · GP9→pin 4 RESET',
     prepare: prepareHex,
     parseId: parseAvrId
+  },
+  /* The same chip through its JTAG port. The file dropped in is still a
+     .hex, but it is turned into an SVF here and played through the plain
+     SVF command — so this mode uses no AVR firmware command at all. */
+  avrjtag: {
+    ext: '.hex',
+    label: 'ATmega32A over JTAG',
+    idCmd: 'ID',
+    flashCmd: 'SVF',
+    verifyCmd: 'SVF',
+    jtag: true,
+    jtagPort: 'AVR',
+    dropHead: 'Drop your .hex file here',
+    idHint: "Wire the AVR board's JTAG header to Pico pins 14-17, then check it.",
+    pins: 'GP10→pin 1 TCK · GP11←pin 3 TDO · GP12→pin 5 TMS · GP13→pin 9 TDI',
+    prepare: prepareHexAsSvf,
+    parseId: parseAvrJtagId
   }
 };
 
 let mode = MODES.cpld;
+
+/* What the connected firmware said it can take, from its INFO reply.
+   Firmware built before the AVR-over-JTAG work does not report it, and
+   that silence is the answer: it has the old, smaller buffer. */
+let fwMaxStmt = AVRSVF.LEGACY_MAX_STMT;
 
 /* ------------------------------------------------------------------
    SVF inspection
@@ -845,6 +1290,35 @@ function prepareHex(text) {
   };
 }
 
+/* Same .hex file, turned into an SVF instead of a flat image.
+
+   `verifyOnly` drops the erase and the write, leaving a file that reads
+   the chip back and compares — the JTAG answer to "is this board already
+   running my build?", which over ISP is a separate firmware command. */
+function prepareHexAsSvf(text, verifyOnly) {
+  const flat = prepareHex(text);
+
+  const svf = AVRSVF.build({
+    image: flat.bytes,
+    maxStmt: fwMaxStmt,
+    verifyMode: 'auto',
+    erase: !verifyOnly,
+    writeFlash: !verifyOnly,
+    note: verifyOnly ? 'Verify only - nothing is written.' : null
+  });
+
+  /* Not called `mode` — that name is taken by the current MODES entry,
+     and shadowing it here would be a trap for the next edit. */
+  const verifyStyle = AVRSVF.chooseVerifyMode(fwMaxStmt);
+  return {
+    device: 'ATmega32A',
+    build: null,
+    note: flat.note + ' · ' + Math.round(svf.length / 1024) + ' KB of SVF' +
+          (verifyStyle === 'word' ? ' · slower readback (older firmware)' : ''),
+    bytes: new TextEncoder().encode(svf)
+  };
+}
+
 /* ------------------------------------------------------------------
    Device replies
    ------------------------------------------------------------------ */
@@ -862,6 +1336,27 @@ function parseAvrId(line) {
      weak-connection warning and must not leak into the device name. */
   const name = p.slice(2).join(' ').replace(/\s*retries=\d+\s*$/, '');
   return { id: p[1], name: name };
+}
+
+/* The AVR's JTAG IDCODE, from the plain ID command.
+
+   The firmware only knows MAX V IDCODEs, so it reports this one as
+   "unrecognised" and the decoding happens here — which is the same
+   division of labour as everywhere else in this mode. */
+function parseAvrJtagId(line) {
+  if (!line.startsWith('IDCODE')) return null;
+  const m = line.match(/IDCODE 0x([0-9A-Fa-f]{8})/);
+  if (!m) return null;
+
+  const id = parseInt(m[1], 16) >>> 0;
+  if ((id & AVRSVF.IDCODE_MASK) !== AVRSVF.IDCODE) return null;
+
+  /* The top nibble counts up with each silicon revision, so it is
+     reported rather than compared. */
+  return {
+    id: '0x' + m[1].toUpperCase(),
+    name: 'ATmega32A (revision ' + (id >>> 28) + ')'
+  };
 }
 
 /* ------------------------------------------------------------------
@@ -894,8 +1389,12 @@ async function connect(showAllPorts) {
     readLoop();
     await new Promise(r => setTimeout(r, 300));
 
-    const pong = await ask('PING', 4000);
-    if (!pong || !pong.startsWith('PONG')) {
+    /* Firmware 1.1 answers "FIRMWARE 1.1"; older boards answer "PONG 1.0".
+       Both are accepted, because a student whose Pico was flashed months
+       ago must not be told their programmer is the wrong device. */
+    const hello = await ask('PING', 4000);
+    const fw = hello && hello.match(/^(?:FIRMWARE|PONG)\s+(\S+)/);
+    if (!fw) {
       verdict('fail', 'Wrong device',
         "That port didn't answer as a programmer. Disconnect, then pick the " +
         'one named <strong>Board Programmer</strong>. If nothing by that name ' +
@@ -906,10 +1405,17 @@ async function connect(showAllPorts) {
       return;
     }
 
+    /* Ask what this firmware can take before generating anything for it.
+       Older firmware does not answer with max_stmt_bytes, and guessing
+       high would fail mid-file with a TOO_LONG a student cannot act on. */
+    const info = await ask('INFO', 4000);
+    const cap = info && info.match(/max_stmt_bytes=(\d+)/);
+    fwMaxStmt = cap ? +cap[1] : AVRSVF.LEGACY_MAX_STMT;
+    if (info) log(info, 'rx');
+
     $('btnConnect').textContent = 'Disconnect';
     $('btnId').disabled = false;
-    $('st1b').innerHTML = 'Connected. Firmware <strong>' +
-      pong.split(' ')[1] + '</strong>.';
+    $('st1b').innerHTML = 'Connected. Firmware <strong>' + fw[1] + '</strong>.';
     /* Stop here: this step only establishes the link to the programmer.
      * Checking the board is step 2, and stays a deliberate action so the
      * student sees the result of each stage separately. */
@@ -967,19 +1473,62 @@ async function disconnect() {
    Detection
    ------------------------------------------------------------------ */
 
+/* Point the programmer at this mode's JTAG connector.
+
+   Firmware 1.1 has two, and the choice persists until it is changed — so
+   without this, programming an AVR and then a CPLD would read an empty
+   socket and blame the wiring on a board that is perfectly well connected.
+   Claiming it every time costs one command and removes that entirely.
+
+   Returns false on firmware with only one connector, which answers ERR.
+   That is only a problem in the AVR JTAG mode; everywhere else the single
+   connector is already the right one. */
+async function claimPort() {
+  if (!mode.jtagPort) return true;              // the ISP mode has no port
+  const r = await ask('PORT ' + mode.jtagPort, 5000);
+  return !!(r && r.startsWith('PORT'));
+}
+
+/* Shown when the AVR JTAG mode is used against firmware that predates the
+   second connector. The feature still works — the cable just has to go
+   where the CPLD one normally lives. */
+function singlePortHelp() {
+  return 'This programmer has one JTAG connector, so the AVR board has to be ' +
+    'wired to <strong>Pico pins 4-7</strong> (where a CPLD board normally ' +
+    'goes) rather than pins 14-17.<br><br>To wire both boards at once, ' +
+    'reload the programmer firmware using <strong>First time? Set up your ' +
+    'Pico</strong> above — the newer version adds a second connector on ' +
+    'pins 14-17.';
+}
+
 async function readId() {
+  if (!(await claimPort()) && mode.jtag) {
+    verdict('warn', 'One JTAG connector', singlePortHelp());
+  }
+
   const r = await ask(mode.idCmd, 8000);
   if (!r) return;
 
   if (r.startsWith('ERR NO_TARGET')) {
     const isCpld = (mode === MODES.cpld);
+    const isJtag = (mode === MODES.cpld || mode.jtag);
     $('st2b').textContent = 'No ' + (isCpld ? 'CPLD' : 'AVR') + ' found.';
     stage(2, false);
     setDropEnabled(false);
     verdict('fail', 'No board detected',
       'The programmer is working, but nothing answered on the ' +
-      (isCpld ? 'JTAG' : 'ISP') + ' pins. Check, in this order:<ul>' +
-      (isCpld
+      (isJtag ? 'JTAG' : 'ISP') + ' pins. Check, in this order:<ul>' +
+      (mode.jtag
+        ? '<li><strong>Wrong connector</strong> — the AVR JTAG cable goes to Pico ' +
+          'pins&nbsp;14-17. Pins&nbsp;4-7 are the CPLD connector</li>' +
+          '<li><strong>Count down the odd row</strong> — Pico&nbsp;14-17 go to header ' +
+          'pins&nbsp;1, 3, 5, 9 in order, skipping pin&nbsp;7</li>' +
+          '<li><strong>JTAG switched off</strong> — the "PORTC 2-5 free" fuse ' +
+          'preset disables it. Switch to the ISP mode to reach a board set that way</li>' +
+          '<li><strong>Your program disabled it</strong> — code that sets the JTD bit ' +
+          'to use PC2-PC5 as ordinary pins turns JTAG off once it runs. Hold the ' +
+          "board's RESET low while programming, or use ISP</li>"
+        : isCpld
         ? '<li><strong>TDI and TDO swapped</strong> — the easiest pair to get backwards</li>'
         : '<li><strong>MOSI and MISO swapped</strong> — the easiest pair to get backwards</li>' +
           '<li><strong>RESET not connected</strong> — ISP cannot start without it</li>') +
@@ -987,6 +1536,24 @@ async function readId() {
       '<li><strong>Ground</strong> — a ground wire between programmer and board, ' +
       'not just a shared power supply</li></ul>' +
       'Pins for this mode: <code>' + mode.pins + '</code>');
+    return;
+  }
+
+  /* An IDCODE that is not this board's. In JTAG mode both board types
+     answer on the same four pins, so saying which one is plugged in is
+     more use than "not detected". */
+  if (mode.jtag && r.startsWith('IDCODE') && !mode.parseId(r)) {
+    stage(2, false);
+    setDropEnabled(false);
+    const cpld = parseCpldId(r);
+    verdict('fail', 'That is not an ATmega32A',
+      (cpld && cpld.name !== 'unrecognised'
+        ? 'Those pins are connected to a <strong>' + cpld.name + '</strong> — ' +
+          'the CPLD board. Switch to the <strong>MAX V CPLD</strong> mode above ' +
+          'to program it.'
+        : 'Something answered on the JTAG pins, but its IDCODE is ' +
+          '<code>' + r.split(' ')[1] + '</code> rather than an ATmega32A’s. ' +
+          'Check you are on the AVR board.'));
     return;
   }
 
@@ -1165,9 +1732,14 @@ function setDropEnabled(on) {
 async function program(file) {
   if (busy || !port) return;
 
+  /* Read before anything is sent. In JTAG mode this is also where the
+     SVF gets built, so a file that cannot be turned into one fails here
+     rather than with the board half-erased. */
+  const verifyOnly = !!(mode.verifyCmd && $('vonly').checked);
+
   let info;
   try {
-    info = mode.prepare(await file.text());
+    info = mode.prepare(await file.text(), verifyOnly);
   } catch (e) {
     verdict('fail', "Couldn't read that file", e.message);
     return;
@@ -1201,7 +1773,11 @@ async function program(file) {
   let ok = false, detail = '';
 
   try {
-    const verifyOnly = mode.verifyCmd && $('vonly').checked;
+    /* Claim the connector again here rather than trusting step 2 to have
+       done it: the student may have switched modes in between, and
+       programming the wrong socket is not a mistake worth risking. */
+    await claimPort();
+
     await send((verifyOnly ? mode.verifyCmd : mode.flashCmd) +
                ' ' + bytes.length);
     const ready = await nextLine(8000);
@@ -1259,7 +1835,7 @@ async function program(file) {
   $('regState').textContent = ok ? 'DONE' : 'STOPPED';
   restCells();
 
-  const wasVerify = mode.verifyCmd && $('vonly').checked;
+  const wasVerify = verifyOnly;
 
   if (ok) {
     $('bar').style.width = '100%';
@@ -1271,20 +1847,79 @@ async function program(file) {
     } else {
       $('st3b').innerHTML = 'Programmed in <strong>' + secs + 's</strong>.';
       verdict('pass', 'Programmed',
-        (mode === MODES.avr
-          ? 'Your ATmega32A is running the new program, verified byte for byte '
-          : 'Your CPLD is running the new design, verified ') +
+        (mode === MODES.cpld
+          ? 'Your CPLD is running the new design, verified '
+          : 'Your ATmega32A is running the new program, verified byte for byte ') +
         'against the file. Drop another to program the next board.');
     }
   } else {
     $('st3b').textContent = wasVerify ? "Didn't match." : "Didn't program.";
     verdict('fail', wasVerify ? "Board doesn't match" : 'Programming failed',
-            explainError(detail));
+            mode.jtag ? explainJtagError(detail) : explainError(detail));
   }
 
   busy = false;
   setDropEnabled(true);
   $('btnId').disabled = false;
+}
+
+/* The same job for the AVR-over-JTAG mode.
+
+   The firmware reports a statement number, which is meaningless to a
+   student — but the generated file has a fixed shape, so where it
+   stopped says what went wrong. The IDCODE and signature checks come
+   first, and if either of those failed then nothing was written. */
+function explainJtagError(detail) {
+  const d = (detail || '').trim();
+
+  if (/TDO_MISMATCH/.test(d)) {
+    const m = d.match(/got 0x([0-9A-F]+)/);
+    const w = d.match(/ of (\d+):/);
+
+    /* "All ones" has to be judged against the width of the shift, not by
+       looking for a run of Fs. Most of these are 15-bit programming
+       commands, where a floating TDO reads back as 0x7FFF — which is
+       every bit set, but does not look like it. Getting this wrong sends
+       a student off checking their file when the wire is simply off. */
+    const val = m ? parseInt(m[1], 16) : -1;
+    const n = Math.min(w ? +w[1] : (m ? m[1].length * 4 : 32), 32);
+    const ones = (val >= 0) && (val === Math.pow(2, n) - 1);
+    const zeros = (val === 0);
+
+    if (ones || zeros) {
+      return 'The chip stopped answering on TDO partway through ' +
+        '(it returned all ' + (ones ? 'ones' : 'zeros') +
+        ', which is what a disconnected line reads as).<ul>' +
+        '<li><strong>Check the connector</strong> — Pico pins&nbsp;14-17, going ' +
+        'to header pins&nbsp;1, 3, 5, 9 in order</li>' +
+        '<li>Check the ground wire (header pin&nbsp;2, or pin&nbsp;10)</li>' +
+        '<li>Keep the jumper wires short — TCK especially</li>' +
+        '<li>Board knocked loose, or a wire came out mid-run</li></ul>';
+    }
+
+    return 'The chip answered, but not with what the file expected.<ul>' +
+      '<li><strong>If it stopped almost immediately</strong>, this is not an ' +
+      'ATmega32A — check you are on the AVR board and not the CPLD one</li>' +
+      '<li><strong>If it got a long way through</strong>, the flash read back ' +
+      'wrong. That is usually a marginal connection rather than a bad chip: ' +
+      'shorten the leads and try again</li>' +
+      '<li>If it fails at the same point every time, suspect the chip</li></ul>';
+  }
+
+  if (/TOO_LONG/.test(d)) {
+    return 'The programmer rejected part of the generated file as too long. ' +
+      'Its firmware and this page disagree about what it can accept — ' +
+      'reload the programmer firmware using <strong>First time? Set up your ' +
+      'Pico</strong> above.';
+  }
+
+  if (/UNSUPPORTED|SYNTAX/.test(d)) {
+    return 'The programmer did not understand the generated file, which ' +
+      'means its firmware is older than this page expects. Reload it using ' +
+      '<strong>First time? Set up your Pico</strong> above.';
+  }
+
+  return explainError(detail);
 }
 
 /* Turn a firmware error code into something a student can act on. */
@@ -1406,12 +2041,13 @@ function explainError(detail) {
 function setMode(next) {
   if (busy) return;
   mode = next;
-  const isCpld = (mode === MODES.cpld);
 
-  $('mCpld').classList.toggle('on', isCpld);
-  $('mAvr').classList.toggle('on', !isCpld);
-  $('mCpld').setAttribute('aria-selected', String(isCpld));
-  $('mAvr').setAttribute('aria-selected', String(!isCpld));
+  const tabs = [['mCpld', MODES.cpld], ['mAvr', MODES.avr],
+                ['mAvrJtag', MODES.avrjtag]];
+  for (const [id, m] of tabs) {
+    $(id).classList.toggle('on', mode === m);
+    $(id).setAttribute('aria-selected', String(mode === m));
+  }
 
   $('dropH').textContent = mode.dropHead;
   $('drop').setAttribute('aria-label',
@@ -1427,8 +2063,10 @@ function setMode(next) {
   $('fuse').className = 'fuse';    // fuses are an AVR-only concept
   curFuses = null;
 
-  /* An SVF already carries its own verify vectors, so a separate verify
-   * pass only means something for the AVR. */
+  /* A Quartus SVF already carries its own verify vectors, so a separate
+   * pass would mean nothing there. Both AVR modes can do it: over ISP the
+   * firmware compares, and over JTAG the page generates a file that reads
+   * the chip back without erasing it. */
   $('vonlyWrap').classList.toggle('show', !!mode.verifyCmd);
   $('vonly').checked = false;
 
@@ -1492,6 +2130,7 @@ drop.addEventListener('drop', e => {
 
 $('mCpld').onclick = () => setMode(MODES.cpld);
 $('mAvr').onclick = () => setMode(MODES.avr);
+$('mAvrJtag').onclick = () => setMode(MODES.avrjtag);
 
 buildCells();
 setMode(MODES.cpld);   // drive the initial copy from the mode table too
