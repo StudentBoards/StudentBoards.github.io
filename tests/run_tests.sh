@@ -70,6 +70,24 @@ else
     printf '\n\033[2m(skipping AVR CLI test: needs python3)\033[0m\n'
 fi
 
+# Plays a generated SVF into a simulated ATmega32A and checks the flash
+# afterwards, rather than checking the text of the file. Neither the AVR
+# JTAG path nor the ISP one has run on hardware, so this is the only thing
+# standing behind either of them.
+if command -v python3 >/dev/null 2>&1; then
+    run "AVR over JTAG (simulated device)" python3 test_avr_jtag.py
+else
+    printf '\n\033[2m(skipping AVR JTAG test: needs python3)\033[0m\n'
+fi
+
+# The page and the CLI generate the SVF independently, in two languages.
+# Comparing them byte for byte is what keeps them from drifting apart.
+if command -v node >/dev/null 2>&1 && command -v python3 >/dev/null 2>&1; then
+    run "SVF generators agree (page vs CLI)" python3 test_svf_parity.py
+else
+    printf '\n\033[2m(skipping generator parity test: needs node and python3)\033[0m\n'
+fi
+
 printf '\n'
 if [ "$fail" -eq 0 ]; then
     printf '\033[92mAll tests passed.\033[0m\n'

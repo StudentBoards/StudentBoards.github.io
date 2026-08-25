@@ -180,5 +180,127 @@ check("  fuses decoded",
 check("  unreadable fuses refused",
       quiet(m.show_fuses, "ERR NO_TARGET"), None)
 
+
+# ---- JTAG ------------------------------------------------------------
+# The JTAG path shares no firmware command with the ISP one: it asks the
+# programmer what it can take, then streams a generated SVF. What matters
+# here is that it negotiates, that it recognises the part, and that it
+# notices a transfer that did not arrive intact.
+import os
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)),
+                                "..", "tools"))
+import avrsvf
+
+print("\nJTAG negotiation")
+def limit(name, info_line, expect):
+    fake._script = [info_line]
+    p = m.Programmer("fake")
+    return check(name, quiet(p.max_stmt_bytes), expect)
+
+limit("  current firmware reports its cap",
+      "INFO version=1.1 tck=4 tms=2 tdi=3 tdo=5 max_shift_bits=4096 "
+      "max_stmt_bytes=1024 edge_delay_us=0", 1024)
+# Firmware that predates the field must not be assumed to have the bigger
+# buffer, or the file fails partway through with a TOO_LONG the student
+# cannot act on.
+limit("  older firmware assumed small",
+      "INFO version=1.0 tck=4 tms=2 tdi=3 tdo=5 max_shift_bits=4096 "
+      "edge_delay_us=0", avrsvf.LEGACY_MAX_STMT_BYTES)
+limit("  no reply at all assumed small", "", avrsvf.LEGACY_MAX_STMT_BYTES)
+
+print("\nJTAG port selection")
+# Which of the two JTAG connectors is selected persists in the firmware
+# until it is changed, so every tool claims the one it wants rather than
+# assuming. Firmware with a single connector says so, and that is not a
+# failure -- the AVR is still reachable by moving the CPLD cable.
+def port(name, reply, expect):
+    fake._script = [reply]
+    p = m.Programmer("fake")
+    return check(name, quiet(p.select_port, "AVR"), expect)
+
+port("  two-connector firmware switches", "PORT AVR", True)
+port("  single-connector firmware says so",
+     "ERR unsupported command 'PORT'", False)
+port("  no reply is not a switch", "", False)
+
+print("\nJTAG IDCODE")
+# The firmware only knows MAX V IDCODEs, so it reports the AVR as
+# "unrecognised" and the decoding is the host's job.
+check("  ATmega32A accepted",
+      quiet(m.show_idcode, "IDCODE 0x0950203F unrecognised"), True)
+check("  later revision accepted",
+      quiet(m.show_idcode, "IDCODE 0x3950203F unrecognised"), True)
+check("  MAX V refused",
+      quiet(m.show_idcode, "IDCODE 0x020A50DD MAX V 5M40Z/5M80Z"), False)
+check("  nothing on the chain refused",
+      quiet(m.show_idcode, "ERR NO_TARGET"), False)
+
+print("\nSVF streaming")
+svf = avrsvf.build_svf(image=b"\x01\x02\x03\x04", max_stmt_bytes=1024)
+data = svf.encode()
+
+def fnv1a(b):
+    h = 2166136261
+    for x in b:
+        h = ((h ^ x) * 16777619) & 0xFFFFFFFF
+    return h
+
+def play(name, script, expect):
+    fake._script = script
+    p = m.Programmer("fake")
+    return check(name, quiet(p.play_svf, svf, "programmed"), expect)
+
+good = ("DONE statements=99 bits=1234 ms=900 delay=0us "
+        "rx=%d hash=%08X" % (len(data), fnv1a(data)))
+
+play("  programmed, hash agrees", ["READY", good], True)
+# A hash that disagrees means the file did not arrive intact, so any TDO
+# failure above it is a symptom of the link rather than of the board.
+play("  corrupt transfer caught",
+     ["READY", "DONE statements=99 bits=1 ms=9 rx=%d hash=DEADBEEF"
+      % len(data)], False)
+play("  short transfer caught",
+     ["READY", "DONE statements=99 bits=1 ms=9 rx=3 hash=%08X"
+      % fnv1a(data)], False)
+play("  TDO mismatch reported",
+     ["READY", "ERR TDO_MISMATCH statement=14 detail=TDO bit 0 of 15: "
+      "got 0x00FF expected 0x001E rx=%d hash=%08X"
+      % (len(data), fnv1a(data))], False)
+play("  silent device -> timeout", ["READY"], False)
+
+print("\nJTAG error advice")
+# "Nothing is connected" and "the chip answered with the wrong data" need
+# completely different things checked, so the distinction has to be right.
+def advice(name, detail, expect_dead):
+    buf = io.StringIO()
+    with contextlib.redirect_stdout(io.StringIO()), \
+         contextlib.redirect_stderr(buf):
+        m.explain_svf_error(detail)
+    return check(name, "did not answer at all" in buf.getvalue(), expect_dead)
+
+# A floating TDO on a 15-bit programming command reads back as 0x7FFF:
+# every bit set, but it does not look like a run of Fs. This is the case
+# the message most needs to catch and the easiest one to get wrong.
+advice("  15-bit all-ones is no answer",
+       "ERR TDO_MISMATCH statement=14 detail=TDO bit 0 of 15: "
+       "got 0x7FFF expected 0x001E", True)
+advice("  32-bit all-ones is no answer",
+       "ERR TDO_MISMATCH statement=2 detail=TDO bit 0 of 32: "
+       "got 0xFFFFFFFF expected 0x0950203F", True)
+advice("  all-zeros is no answer",
+       "ERR TDO_MISMATCH statement=14 detail=TDO bit 0 of 15: "
+       "got 0x0000 expected 0x001E", True)
+# A plausible but different value means the wiring is fine and the chip is
+# not the one the file was built for.
+advice("  wrong data is not no answer",
+       "ERR TDO_MISMATCH statement=14 detail=TDO bit 0 of 15: "
+       "got 0x0094 expected 0x0095", False)
+
+fake._script = ["READY", good]
+p = m.Programmer("fake")
+quiet(p.play_svf, svf, "programmed")
+check("  sends every byte of the SVF", p.ser.written,
+      len(data) + len("SVF %d\n" % len(data)))
+
 print("\n" + ("ALL AVR PROTOCOL TESTS PASSED" if allok else "SOME FAILED"))
 sys.exit(0 if allok else 1)

@@ -17,8 +17,22 @@ Other things you can do:
     python3 avr.py --list                    list serial ports
     python3 avr.py main.hex -p COM4          pick the port manually
 
-WIRING (Pico pins 9-12, the block below the JTAG one). The AVR-side
-numbers are the 44-pin DIL package pins:
+    python3 avr.py --jtag main.hex           program over JTAG instead of ISP
+
+TWO WAYS IN
+
+This board can be programmed over ISP or over JTAG, and --jtag picks the
+second. They reach the same flash and neither is more correct; the JTAG
+header is simply easier to get at on the top of the board. Each has its
+own connector on the Pico, so both can stay wired.
+
+The paths work quite differently underneath. ISP is a driver in the Pico
+firmware. JTAG is not: the host turns the HEX file into an SVF and plays
+it through the same SVF player the CPLD boards use, so nothing about the
+firmware knows it is talking to an AVR. See avrsvf.py.
+
+WIRING FOR ISP (Pico pins 9-12, the block below the JTAG one). The
+AVR-side numbers are the 44-pin DIL package pins:
 
     Pico phys  GPIO         AVR board (44-pin DIL)
     ---------  ----         ----------------------
@@ -28,11 +42,48 @@ numbers are the 44-pin DIL package pins:
        12      GP9    ->    pin 4   RESET
       8, 13    GND    --    GND
 
-The four signal wires run straight across, in order, with no crossovers.
+The four ISP wires run straight across, in order, with no crossovers.
+
+WIRING FOR JTAG (Pico pins 14-17). This is a second, separate JTAG
+connector, so a CPLD board on pins 4-7 and an AVR board can both stay
+plugged in — nothing gets swapped to change target. The AVR side is the
+10-pin 2x5 JTAG header:
+
+    Pico phys  GPIO         JTAG header      ATmega32A
+    ---------  ----         -----------      ---------
+       14      GP10   ->    pin 1   TCK      PC2
+       15      GP11   <-    pin 3   TDO      PC4
+       16      GP12   ->    pin 5   TMS      PC3
+       17      GP13   ->    pin 9   TDI      PC5
+     13, 18    GND    --    pin 2 or 10      GND
+
+    2x5 header, pin 1 marked:
+
+        TCK   1 * *  2  GND
+        TDO   3 * *  4  VTref
+        TMS   5 * *  6  nSRST
+       Vsup   7 * *  8  nTRST
+        TDI   9 * * 10  GND
+
+All four signals are in the odd-numbered row, so Pico pins 14-17 run
+straight down it in order — skipping only header pin 7. Four parallel
+jumpers, no crossovers, one gap at the end. Prefer pin 2 for ground: it
+sits next to TCK and gives the clock the shortest return path.
+
+Leave VTref, Vsupply, nSRST and nTRST unconnected. The datasheet is
+explicit that programming needs nothing but the four signals (section
+27.10), and Vsupply in particular would power the board from the Pico.
+
+Firmware before 1.1 has only one JTAG connector; there, --jtag means
+moving the CPLD cable over to the AVR header instead.
+
+JTAG only works while the JTAGEN fuse is programmed, which it is from the
+factory. The 8mhz-freeportc preset unprograms it to free PORTC 2-5 — a
+board set that way has to be reached over ISP.
 
 The Pico's GPIO is 3.3 V and NOT 5 V tolerant. An ATmega32A running at
-5 V will drive MISO at 5 V and damage the Pico — only connect a board
-running at 3.3 V, or fit a level shifter.
+5 V will drive MISO or TDO at 5 V and damage the Pico — only connect a
+board running at 3.3 V, or fit a level shifter.
 
 This file is deliberately standalone rather than importing the shared
 bits from maxv.py: these scripts get copied out of the repo one at a
@@ -44,6 +95,7 @@ Requires pyserial:   pip install pyserial
 
 import argparse
 import os
+import re
 import sys
 import time
 
@@ -381,6 +433,92 @@ class Programmer:
         explain_error(line)
         return False
 
+    # -- JTAG ----------------------------------------------------------
+    #
+    # No AVR-specific firmware is involved below this line. The Pico is
+    # running the same SVF player the CPLD boards use; everything that
+    # knows about the ATmega32A lives in avrsvf.py, on this side.
+
+    def max_stmt_bytes(self):
+        """The longest SVF statement this firmware will accept.
+
+        Firmware built before the AVR-over-JTAG work does not report it,
+        and that silence is the answer: it has the old, smaller buffer.
+        """
+        import avrsvf
+        m = re.search(r"max_stmt_bytes=(\d+)", self.ask("INFO", 10) or "")
+        return int(m.group(1)) if m else avrsvf.LEGACY_MAX_STMT_BYTES
+
+    def read_idcode(self):
+        return self.ask("ID", 15)
+
+    def select_port(self, name):
+        """Point ID/SVF at one of the two JTAG connectors.
+
+        Returns True if the programmer switched, False if it has only one
+        connector — firmware before 1.1 answers "ERR unsupported command",
+        and that is information rather than a failure: the board is still
+        reachable by moving the CPLD cable across.
+        """
+        reply = self.ask(f"PORT {name}", 10) or ""
+        return reply.startswith("PORT")
+
+    def play_svf(self, svf, what):
+        """Stream an SVF and report the verdict. Returns True on success."""
+        data = svf.encode()
+        start = time.time()
+
+        self.command(f"SVF {len(data)}")
+        ready = self.readline()
+        if not ready.startswith("READY"):
+            print(f"Unexpected reply: {ready or '(nothing)'}", file=sys.stderr)
+            return False
+
+        chunk = 512
+        sent = 0
+        while sent < len(data):
+            self.ser.write(data[sent:sent + chunk])
+            sent += min(chunk, len(data) - sent)
+            pct = 100 * sent // len(data)
+            bar = "#" * (pct // 4) + "-" * (25 - pct // 4)
+            print(f"\r  [{bar}] {pct:3d}%  {sent}/{len(data)} bytes",
+                  end="", flush=True)
+        self.ser.flush()
+        print()
+
+        line = self._await_result("statements")
+        if line is None:
+            print("Timed out waiting for a result.", file=sys.stderr)
+            return False
+
+        # The firmware hashes every byte it received and reports it. A
+        # mismatch means the file did not arrive intact, so any TDO
+        # failure above is a symptom of the link rather than of the
+        # board — a completely different thing to go and check.
+        m = re.search(r"rx=(\d+) hash=([0-9A-Fa-f]{8})", line)
+        if m:
+            rx, got = int(m.group(1)), int(m.group(2), 16)
+            want = 2166136261
+            for b in data:
+                want = ((want ^ b) * 16777619) & 0xFFFFFFFF
+            if rx != len(data) or got != want:
+                print(f"  {line}")
+                print("\n*** TRANSFER CORRUPTED ***", file=sys.stderr)
+                print(f"  sent {len(data)} bytes, hash {want:08X}",
+                      file=sys.stderr)
+                print(f"  device got {rx} bytes, hash {got:08X}",
+                      file=sys.stderr)
+                print("  Fix the link before reading anything into the "
+                      "programming error above.", file=sys.stderr)
+                return False
+
+        if line.startswith("DONE"):
+            print(f"  {line}")
+            print(f"\nPASS — {what} in {time.time() - start:.1f}s")
+            return True
+        explain_svf_error(line)
+        return False
+
 
 # ---------------------------------------------------------------------
 # Turning replies into something a student can act on
@@ -429,6 +567,107 @@ def explain_error(line):
         print("\nThe program does not fit in the ATmega32A's 32 KB of flash.",
               file=sys.stderr)
     print("\nFAIL", file=sys.stderr)
+
+
+JTAG_WIRING_HELP = (
+    "  - Check the cable is on Pico pins 14-17, not 4-7 — pins 4-7 are the\n"
+    "    CPLD connector\n"
+    "  - Check it against the 2x5 header: all four signals are in the odd\n"
+    "    row, so Pico 14-17 go to header 1, 3, 5, 9 in order (skipping 7)\n"
+    "  - Check GND is connected (header pin 2, or pin 10)\n"
+    "  - Check the target board has power\n"
+    "  - Check the board runs at 3.3 V — a 5 V board can damage the Pico\n"
+    "  - JTAG needs the JTAGEN fuse programmed. If this board was set to\n"
+    "    the 8mhz-freeportc preset, JTAG is switched off and only ISP can\n"
+    "    reach it: retry without --jtag\n"
+    "  - If the program on the board sets the JTD bit to use PC2-PC5 as\n"
+    "    ordinary pins, JTAG goes away once it runs. Hold the board's RESET\n"
+    "    line low while programming, or use ISP"
+)
+
+
+def explain_svf_error(line):
+    """Explain a JTAG failure in terms of the operation, not the SVF."""
+    print(f"  {line}", file=sys.stderr)
+
+    stmt = re.search(r"statement=(\d+)", line)
+    where = f" (statement {stmt.group(1)})" if stmt else ""
+
+    if "TDO_MISMATCH" in line:
+        # The generated file checks the IDCODE, then the signature, then
+        # the flash, in that order — so where it stopped says what went
+        # wrong, and the first two failing mean nothing was written.
+        got = re.search(r"got 0x([0-9A-Fa-f]+)", line)
+        width = re.search(r" of (\d+):", line)
+
+        # "All ones" has to be judged against the width of the shift.
+        # Most of these are 15-bit programming commands, where a floating
+        # TDO reads back as 0x7FFF — every bit set, but it does not look
+        # like it. Matching on a run of Fs would miss exactly the case
+        # this message most needs to catch.
+        val = int(got.group(1), 16) if got else -1
+        nbits = min(int(width.group(1)) if width else 32, 32)
+        dead = val == 0 or (val >= 0 and val == (1 << nbits) - 1)
+
+        if dead:
+            print(f"\nThe JTAG chain did not answer at all{where}.",
+                  file=sys.stderr)
+            print(JTAG_WIRING_HELP, file=sys.stderr)
+        else:
+            print(f"\nThe device answered, but not with what was expected"
+                  f"{where}.", file=sys.stderr)
+            print("  - If this stopped early, the part is not an ATmega32A:\n"
+                  "    check you are on the AVR board and not the CPLD one\n"
+                  "  - If it stopped during the verify, the flash read back\n"
+                  "    wrong. That is usually a marginal link rather than a\n"
+                  "    bad chip: shorten the leads and retry, and suspect the\n"
+                  "    chip only if it fails at the same place every time",
+                  file=sys.stderr)
+    elif "TOO_LONG" in line:
+        # Only reachable if the firmware understated its own limit.
+        print("\nThe programmer rejected a statement as too long. Its INFO\n"
+              "reply and its actual buffer disagree — reflash it with the\n"
+              "matching .uf2 from firmware/.", file=sys.stderr)
+    elif "CHAIN" in line:
+        print("\nThe generated file assumes one device on the JTAG chain.",
+              file=sys.stderr)
+    elif "TIMEOUT" in line:
+        print("\nThe programmer stopped receiving partway through. Try a\n"
+              "different USB cable or port.", file=sys.stderr)
+    print("\nFAIL", file=sys.stderr)
+
+
+def show_idcode(reply):
+    """Report the JTAG IDCODE. Returns True if an ATmega32A answered."""
+    import avrsvf
+
+    if reply.startswith("ERR") or "IDCODE" not in reply:
+        print("Nothing answered on the JTAG chain.", file=sys.stderr)
+        print(JTAG_WIRING_HELP, file=sys.stderr)
+        return False
+
+    m = re.search(r"IDCODE 0x([0-9A-Fa-f]{8})", reply)
+    if not m:
+        print(reply, file=sys.stderr)
+        return False
+
+    idcode = int(m.group(1), 16)
+    want = avrsvf.ATMEGA32A.idcode
+    if (idcode & avrsvf.IDCODE_MASK) == want:
+        # The top nibble counts up with each silicon revision, so it is
+        # reported rather than compared.
+        print(f"IDCODE 0x{idcode:08X}  ATmega32A (revision {idcode >> 28})")
+        return True
+
+    print(f"IDCODE 0x{idcode:08X} — this is not an ATmega32A.",
+          file=sys.stderr)
+    if (idcode & 0xFFF) == 0x0DD:
+        print("  That is an Altera part — you are on the CPLD board. Use\n"
+              "  maxv.py for that one.", file=sys.stderr)
+    else:
+        print(f"  Expected 0x?{want:07X}. Check you are on the AVR board.",
+              file=sys.stderr)
+    return False
 
 
 def show_signature(reply):
@@ -535,6 +774,103 @@ def do_set_fuses(prog, lfuse, hfuse, confirmed, description=None):
 
     explain_error(reply or "ERR no reply")
     return 1
+
+
+def do_jtag(prog, args, image, fuses):
+    """Everything --jtag does. Returns a process exit code.
+
+    The whole path is: turn what was asked for into an SVF, then play it.
+    No AVR-specific firmware command is used, which is why this works on
+    a Pico whose firmware knows only about CPLDs.
+    """
+    # Imported here, not at the top, so a missing avrsvf.py cannot stop
+    # the ISP path from working. These scripts get copied out of the repo
+    # one at a time and the common case should survive that.
+    try:
+        import avrsvf
+    except ImportError:
+        print("The JTAG path needs avrsvf.py, which builds the SVF. Copy it\n"
+              "next to this file from the repository's tools/ directory.",
+              file=sys.stderr)
+        return 1
+
+    # Point the programmer at the AVR's own JTAG connector. If it has only
+    # one, say so plainly rather than reading an empty socket and blaming
+    # the wiring — the fix is a different cable position, not a checklist.
+    if not prog.select_port("AVR"):
+        print("This programmer has a single JTAG connector, so --jtag needs\n"
+              "the CPLD cable moved to the AVR's JTAG header (Pico pins 4-7).\n"
+              "Reflash it with the current .uf2 from firmware/ to get the\n"
+              "second connector on pins 14-17 and leave both boards wired.\n",
+              file=sys.stderr)
+
+    if args.id or not (image or fuses):
+        return 0 if show_idcode(prog.read_idcode()) else 1
+
+    # Ask before assuming. Old firmware does not report its statement
+    # limit, and guessing high would fail mid-file with a TOO_LONG.
+    limit = prog.max_stmt_bytes()
+    mode = (avrsvf.choose_verify_mode(limit) if args.verify_mode == "auto"
+            else args.verify_mode)
+    if args.verify_mode == "auto" and mode == "word":
+        print(f"  (programmer accepts {limit}-byte statements, so using the "
+              f"longer word-by-word\n   verify — reflashing it with the "
+              f"current .uf2 makes this quicker)")
+
+    # Same order as the ISP path: identify before erasing. The generated
+    # file checks again itself, but failing here costs nothing and says
+    # so before any of it is sent.
+    if not args.no_check:
+        if not show_idcode(prog.read_idcode()):
+            return 1
+
+    lfuse = hfuse = None
+    if fuses is not None:
+        lfuse, hfuse, desc = fuses
+        level, why = fuse_risk(lfuse, hfuse)
+        if level == "fatal":
+            print(why, file=sys.stderr)
+            return 1
+        if level == "confirm" and not args.confirm:
+            print(why, file=sys.stderr)
+            return 1
+        if desc:
+            print(f"Fuses: {desc}")
+
+    verify_only = args.verify
+    try:
+        svf = avrsvf.build_svf(
+            image=image,
+            erase=not verify_only,
+            write_flash=image is not None and not verify_only,
+            verify_flash=image is not None,
+            fuses=None if lfuse is None else (lfuse, hfuse),
+            verify_mode=mode,
+            max_stmt_bytes=limit,
+            note=("Verify only — nothing is written." if verify_only else None),
+        )
+    except avrsvf.SvfError as e:
+        print(e, file=sys.stderr)
+        return 1
+
+    if args.save_svf:
+        try:
+            with open(args.save_svf, "w") as f:
+                f.write(svf)
+            print(f"Wrote {args.save_svf} ({len(svf)} bytes)")
+        except OSError as e:
+            print(f"Could not write {args.save_svf}: {e}", file=sys.stderr)
+            return 1
+
+    what = ("checked" if verify_only else
+            "fuses set" if image is None else "programmed and verified")
+    print(f"Sending {len(svf)} bytes of SVF ({svf.count(';')} statements)")
+
+    if not prog.play_svf(svf, what):
+        return 1
+    if verify_only:
+        print("The flash on the board matches this file.")
+    return 0
 
 
 def do_diag(prog):
@@ -672,6 +1008,17 @@ def main():
                     help="Skip the signature check before programming")
     ap.add_argument("--bootsel", action="store_true",
                     help="Put the Pico into its bootloader for reflashing")
+    ap.add_argument("--jtag", action="store_true",
+                    help="Use the JTAG port instead of ISP — same flash, "
+                         "different four wires (Pico pins 14-17)")
+    ap.add_argument("--verify-mode", choices=("auto", "page", "word"),
+                    default="auto",
+                    help="With --jtag: how the readback is expressed. 'auto' "
+                         "asks the programmer what it can take, which is "
+                         "almost always what you want")
+    ap.add_argument("--save-svf", metavar="FILE",
+                    help="With --jtag: also write the generated SVF here, "
+                         "for inspection or replay with maxv.py")
     args = ap.parse_args()
 
     if args.list:
@@ -730,12 +1077,16 @@ def main():
         return 1
 
     try:
-        pong = prog.ask("PING", 5)
-        if not pong.startswith("PONG"):
+        # Firmware 1.1 answers "FIRMWARE 1.1"; older boards answer
+        # "PONG 1.0". Both are accepted — a Pico flashed months ago is
+        # still a programmer, and saying otherwise would send its owner
+        # off debugging the wrong thing.
+        hello = re.match(r"(?:FIRMWARE|PONG)\s+(\S+)", prog.ask("PING", 5))
+        if not hello:
             print(f"No response from {port} — is this the right device?",
                   file=sys.stderr)
             return 1
-        print(f"Connected on {port} ({pong})")
+        print(f"Connected on {port} (firmware {hello.group(1)})")
 
         if args.bootsel:
             print(prog.ask("BOOTSEL", 5))
@@ -747,10 +1098,31 @@ def main():
             return 0
 
         if args.diag:
+            if args.jtag:
+                # DIAG's checks are written around a MAX V, so against an
+                # AVR they report differences that are not faults. The
+                # IDCODE read is the JTAG-level check that does apply.
+                print("--diag tests the JTAG chain against a MAX V CPLD, so "
+                      "its results do not mean\nanything on an AVR. Reading "
+                      "the IDCODE instead:\n")
+                prog.select_port("AVR")
+                return 0 if show_idcode(prog.read_idcode()) else 1
             return do_diag(prog)
 
         if args.fuses:
+            if args.jtag:
+                # SVF can compare a value but never report one back, so
+                # there is no way to ask "what are the fuses?" through it.
+                # Saying so beats printing a hopeful blank.
+                print("Reading the fuses back needs ISP — an SVF can only "
+                      "check a value it was given, not\nreport one. Drop "
+                      "--jtag for this. (--jtag --set-fuses does verify what "
+                      "it writes.)", file=sys.stderr)
+                return 1
             return 0 if show_fuses(prog.read_fuses()) else 1
+
+        if args.jtag:
+            return do_jtag(prog, args, image, fuses)
 
         if fuses is not None:
             # Naming a preset is not the same as consenting to it: the one

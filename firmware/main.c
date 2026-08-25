@@ -22,14 +22,21 @@
  *     GP2 -> pin 14 TMS,  GP3 -> pin 15 TDI,
  *     GP4 -> pin 16 TCK,  GP5 <- pin 17 TDO,  GND -- GND
  *
+ * There is a SECOND JTAG connector for the AVR's 10-pin header, so both
+ * boards can stay plugged in at once:
+ *     GP10 -> pin 1 TCK,  GP11 <- pin 3 TDO,
+ *     GP12 -> pin 5 TMS,  GP13 -> pin 9 TDI,  GND -- pin 2 or 10
+ * PORT selects which one ID/SVF/DIAG talk to.
+ *
  * PROTOCOL (line-based, over USB CDC):
  *     Host -> Pico             Pico -> Host
  *     ---------------------    -------------------------------------
  *     ID                       IDCODE 0x020A50DD  |  ERR NO_TARGET
  *     INFO                     INFO <version/pins/limits>
+ *     PORT [CPLD|AVR]          PORT <name>  |  ERR BAD_PORT
  *     SPEED <us>               OK
  *     SVF <bytes>              READY, then progress, then DONE / ERR
- *     PING                     PONG
+ *     PING                     FIRMWARE <version>
  *
  * After SVF <bytes> the host sends exactly that many raw bytes. The Pico
  * plays them as they arrive rather than buffering, so file size is not
@@ -52,7 +59,21 @@
 #include "svf.h"
 #include "avr.h"
 
-#define FW_VERSION "1.0"
+/*
+ * Bumped by hand, when the maintainer says so — not automatically with
+ * every change that happens to touch this file.
+ *
+ * 1.1 raised SVF_MAX_STMT to 1024 and reports max_stmt_bytes in INFO, so
+ * the host can pick the compact AVR-over-JTAG verify; added the second
+ * JTAG connector (GP10-13) and the PORT command; and answers PING with
+ * FIRMWARE rather than PONG.
+ *
+ * A 1.0 board still works throughout. It omits max_stmt_bytes, so the
+ * host falls back to the longer verify; it answers "ERR unsupported
+ * command" to PORT, which the host reads as "one JTAG connector"; and it
+ * still says PONG, which every host accepts.
+ */
+#define FW_VERSION "1.1"
 
 /*
  * MAX V IDCODEs.
@@ -185,10 +206,54 @@ static void cmd_id(void)
 
 static void cmd_info(void)
 {
+    /*
+     * max_stmt_bytes is reported so the host can pick a strategy it knows
+     * will fit. The AVR-over-JTAG path has a compact page verify needing a
+     * 537-byte statement and a bulkier word-at-a-time one that does not;
+     * asking up front beats discovering the limit as a TOO_LONG halfway
+     * through a file, which reads like a corrupt upload rather than a
+     * firmware that predates the feature.
+     */
     printf("INFO version=%s tck=%d tms=%d tdi=%d tdo=%d "
-           "max_shift_bits=%d edge_delay_us=%lu\n",
+           "avr_tck=%d avr_tms=%d avr_tdi=%d avr_tdo=%d port=%s "
+           "max_shift_bits=%d max_stmt_bytes=%d edge_delay_us=%lu\n",
            FW_VERSION, PIN_TCK, PIN_TMS, PIN_TDI, PIN_TDO,
-           SVF_MAX_BITS, (unsigned long)jtag_edge_delay_us);
+           PIN_AVR_TCK, PIN_AVR_TMS, PIN_AVR_TDI, PIN_AVR_TDO,
+           jtag_port_name(jtag_active()),
+           SVF_MAX_BITS, SVF_MAX_STMT, (unsigned long)jtag_edge_delay_us);
+}
+
+/*
+ * Choose which JTAG connector the next ID/SVF/DIAG talks to.
+ *
+ * With no argument this reports the current one, so a host can ask
+ * whether this firmware has two ports at all: older firmware answers
+ * "ERR unsupported command", which is the signal to fall back to the
+ * single-port behaviour rather than to give up.
+ */
+static void cmd_port(const char *arg)
+{
+    char name[16];
+    int n = 0;
+    while (arg[n] && arg[n] != ' ' && n < 15) {
+        name[n] = (char)toupper((unsigned char)arg[n]);
+        n++;
+    }
+    name[n] = '\0';
+
+    if (n == 0) {
+        printf("PORT %s\n", jtag_port_name(jtag_active()));
+        return;
+    }
+
+    jtag_port_t port;
+    if (!jtag_port_from_name(name, &port)) {
+        printf("ERR BAD_PORT '%s' — expected CPLD or AVR\n", name);
+        return;
+    }
+
+    jtag_select(port);
+    printf("PORT %s\n", jtag_port_name(port));
 }
 
 static void cmd_speed(const char *arg)
@@ -209,7 +274,13 @@ static void cmd_speed(const char *arg)
  */
 static void cmd_svf(uint32_t total)
 {
-    svf_ctx_t ctx;
+    /*
+     * Static, not automatic: the context carries a whole statement buffer
+     * and at SVF_MAX_STMT that is more than the default stack wants to
+     * hold. Only one SVF ever plays at a time, so there is nothing to
+     * share and nothing to re-enter.
+     */
+    static svf_ctx_t ctx;
     svf_init(&ctx);
 
     led_mode = LED_BUSY;
@@ -691,13 +762,25 @@ int main(void)
         const char *arg = line[i] ? line + i + 1 : "";
 
         if (strcmp(verb, "PING") == 0) {
-            printf("PONG %s\n", FW_VERSION);
+            /*
+             * "FIRMWARE 1.1", not "PONG 1.1". The reply appears verbatim in
+             * a serial monitor, so it should read like an instrument
+             * identifying itself rather than a party game, and it matches
+             * the uppercase-keyword shape of every other reply here.
+             *
+             * The command stays PING: renaming it would break older hosts
+             * against new firmware and buys nothing. Hosts accept either
+             * reply word, so a Pico flashed before 1.1 still connects.
+             */
+            printf("FIRMWARE %s\n", FW_VERSION);
         } else if (strcmp(verb, "ID") == 0) {
             cmd_id();
         } else if (strcmp(verb, "INFO") == 0) {
             cmd_info();
         } else if (strcmp(verb, "SPEED") == 0) {
             cmd_speed(arg);
+        } else if (strcmp(verb, "PORT") == 0) {
+            cmd_port(arg);
         } else if (strcmp(verb, "SVF") == 0) {
             unsigned long n = strtoul(arg, NULL, 10);
             if (n == 0) {

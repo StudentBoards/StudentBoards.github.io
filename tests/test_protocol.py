@@ -36,8 +36,23 @@ allok &= scenario("progress lines then done",
 allok &= scenario("bad READY handshake", ["ERR BAD_LENGTH"], expect=False)
 allok &= scenario("silent device -> timeout", ["READY 14"], expect=False)
 
-fake._script = ["PONG 1.0"]
-p = m.Programmer("fake"); print(f"\nping: {p.ping()}")
+# PING is answered "FIRMWARE 1.1" from 1.1 onward and "PONG 1.0" before
+# that. Both have to be accepted: a Pico flashed months ago is still a
+# programmer, and rejecting it would send its owner off checking cables.
+def ping(name, reply, expect):
+    global allok
+    fake._script = [reply]
+    got = m.Programmer("fake").ping()
+    ok = got == expect
+    allok &= ok
+    print(f"{name:<34} {str(got):<8} {'PASS' if ok else '*** FAIL ***'}")
+
+print()
+ping("ping: current firmware", "FIRMWARE 1.1", "1.1")
+ping("ping: pre-1.1 firmware", "PONG 1.0", "1.0")
+ping("ping: something else entirely", "+++ATH0", None)
+ping("ping: no reply at all", "", None)
+print()
 fake._script = ["IDCODE 0x020A50DD MAX V 5M40Z/5M80Z/5M160Z/5M240Z"]
 p = m.Programmer("fake"); print(f"id ok:      {m.explain_id(p.read_id())}")
 fake._script = ["ERR NO_TARGET"]

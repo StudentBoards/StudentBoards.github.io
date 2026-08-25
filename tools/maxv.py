@@ -30,6 +30,11 @@ package pins:
 
 The four signal wires run straight across, in order, with no crossovers.
 
+Pico pins 14-17 are a second JTAG connector, for an ATmega32A's 10-pin
+header (see avr.py --jtag). Both boards can stay wired at once; this
+script claims the CPLD connector on connect, so it does not matter which
+one was used last.
+
 Requires pyserial:   pip install pyserial
 """
 
@@ -115,12 +120,36 @@ class Programmer:
         return line
 
     def ping(self):
+        """Return the firmware version, or None if this is not a programmer.
+
+        Firmware 1.1 answers "FIRMWARE 1.1"; older boards answer
+        "PONG 1.0". Both are accepted — a Pico flashed months ago is still
+        a programmer, and telling its owner otherwise would send them off
+        debugging the wrong thing entirely.
+        """
         self.command("PING")
-        return self.readline()
+        m = re.match(r"(?:FIRMWARE|PONG)\s+(\S+)", self.readline())
+        return m.group(1) if m else None
 
     def read_id(self):
         self.command("ID")
         return self.readline()
+
+    def select_cpld_port(self):
+        """Point the programmer at the CPLD's JTAG connector.
+
+        Firmware 1.1 has two, and which one is selected persists until it
+        is changed or the Pico is reset — so running avr.py --jtag and
+        then this script would otherwise read an empty AVR socket and
+        report a wiring fault on a board that is perfectly well connected.
+        Claiming the port explicitly costs one command and removes that
+        entire class of confusion.
+
+        Firmware without PORT answers ERR and has only the one connector,
+        which is already the right one.
+        """
+        self.command("PORT CPLD")
+        self.readline()
 
     def set_speed(self, us):
         self.command(f"SPEED {us}")
@@ -269,12 +298,13 @@ def main():
         return 1
 
     try:
-        pong = prog.ping()
-        if not pong.startswith("PONG"):
+        version = prog.ping()
+        if not version:
             print(f"No response from {port} — is this the right device?",
                   file=sys.stderr)
             return 1
-        print(f"Connected on {port} ({pong})")
+        print(f"Connected on {port} (firmware {version})")
+        prog.select_cpld_port()
 
         if args.info:
             prog.command("INFO")

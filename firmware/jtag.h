@@ -33,6 +33,38 @@
  *
  * Do not power the target from the Pico's 3V3 pin for anything beyond a
  * bare CPLD; share ground and give the target its own supply.
+ *
+ * SECOND JTAG PORT — the ATmega32A's 10-pin header:
+ *
+ *     Pico phys  GPIO          JTAG header      ATmega32A
+ *     ---------  ----          -----------      ---------
+ *        14      GP10   ->     pin 1   TCK      PC2
+ *        15      GP11   <-     pin 3   TDO      PC4   (input)
+ *        16      GP12   ->     pin 5   TMS      PC3
+ *        17      GP13   ->     pin 9   TDI      PC5
+ *      13, 18    GND    --     pin 2 or 10      GND
+ *
+ * There are two JTAG ports rather than one so a CPLD board and an AVR
+ * board can both stay plugged in. Swapping a four-wire cable between two
+ * boards every time you switch is exactly the kind of fiddling that ends
+ * with a jumper in the wrong hole.
+ *
+ * THIS ORDER IS ALSO NOT ARBITRARY, and it is a different order from the
+ * CPLD port above for the same reason that one is what it is: it matches
+ * its own connector. All four signals on the 10-pin header sit in the
+ * odd-numbered row, in the sequence TCK, TDO, TMS, (Vsupply), TDI. So
+ * Pico pins 14-17 run down that row in order, skipping only header pin 7.
+ * Four parallel jumpers, no crossovers, one gap at the end.
+ *
+ * Header pins 4 (VTref), 6 (nSRST), 7 (Vsupply) and 8 (nTRST) are left
+ * unconnected. The datasheet is explicit that programming needs nothing
+ * else: "Programming through the JTAG interface requires control of the
+ * four JTAG specific pins: TCK, TMS, TDI and TDO. Control of the reset
+ * and clock pins is not required." (section 27.10). Vsupply in particular
+ * must stay unconnected — it would power the target from the Pico.
+ *
+ * Prefer header pin 2 for ground when using only one: it sits next to TCK
+ * and gives the clock the shortest return path.
  */
 
 #ifndef JTAG_H
@@ -42,12 +74,43 @@
 #include <stdint.h>
 
 /* ---- Pin assignment ------------------------------------------------- */
-/* Ordered to match the board's pin order — see WIRING above before
- * changing these. */
+/* Each port is ordered to match its own connector, which is why the two
+ * differ — see WIRING above before changing either. */
 #define PIN_TMS  2
 #define PIN_TDI  3
 #define PIN_TCK  4
 #define PIN_TDO  5
+
+#define PIN_AVR_TCK  10
+#define PIN_AVR_TDO  11
+#define PIN_AVR_TMS  12
+#define PIN_AVR_TDI  13
+
+/* ---- Ports ---------------------------------------------------------- */
+/*
+ * Two independent JTAG connections. Each keeps its own TAP state, because
+ * they are genuinely separate state machines: leaving one parked in
+ * Shift-DR while driving the other, then coming back and assuming
+ * Test-Logic-Reset, would misprogram the board you left behind.
+ */
+typedef enum {
+    JTAG_PORT_CPLD = 0,
+    JTAG_PORT_AVR,
+    JTAG_PORT_COUNT
+} jtag_port_t;
+
+/* Make `port` the target of every subsequent call. The pins of the other
+ * port are left driven at their idle levels, holding that board in
+ * Test-Logic-Reset rather than floating. */
+void jtag_select(jtag_port_t port);
+
+jtag_port_t jtag_active(void);
+
+/* Name for a port, for protocol replies. */
+const char *jtag_port_name(jtag_port_t port);
+
+/* Look up a port by name ("CPLD"/"AVR"). False if unrecognised. */
+bool jtag_port_from_name(const char *name, jtag_port_t *out);
 
 /* ---- TAP states ----------------------------------------------------- */
 typedef enum {
