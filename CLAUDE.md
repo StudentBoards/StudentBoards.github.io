@@ -270,6 +270,32 @@ without the cause being identified — its comment claimed polling was
 comment is corrected in place. If a wait here ever needs shortening, find
 a poll instruction in *this part's* datasheet first; there is not one.
 
+**`AVRID` reports the negotiated SCK, not a retry count, and falling back
+one rung is not a fault.** ISP requires SCK below a quarter of the target's
+clock. `spi_byte()` spends two `busy_wait_us(avr_sck_delay_us)` per bit, so
+the ladder `{1, 5, 20, 50}` us gives roughly **492, 99, 24 and 9 kHz** —
+measured on hardware, not computed: a 24,576-byte bulk read (786,432 SCK
+cycles) took 1594 ms at the fastest rung, i.e. 493 kHz.
+
+A factory ATmega32A runs from its 1 MHz internal RC, which caps SCK at
+250 kHz. So the fastest rung is about twice what it can take, it *always*
+fails there, and it *always* settles at ~99 kHz. That is the part working
+exactly as specified. The old reply said `retries=1` and the page turned
+any non-zero value into "Weak connection — shorten your jumper wires",
+which accused every brand-new board of bad wiring. Confirmed on hardware:
+the same board reports 492 kHz with 8 MHz fuses and 99 kHz with 1 MHz
+fuses, and programs correctly at both.
+
+Hence `sck=<n>kHz`. Hosts warn only below 50 kHz, because no clock option
+on this part requires going that slow, so getting there does implicate the
+link. Do not restore a warning on "it used a slower rung" — that is the
+negotiation succeeding.
+
+The ladder deliberately still starts fast rather than starting safe for
+1 MHz: a crystal or 8 MHz board then programs at ~492 kHz instead of
+~99 kHz, which for a full 32 KB image is the difference between about 7
+and 20 seconds. The cost is one failed rung (~32 ms) on a 1 MHz part.
+
 **SPIEN is fatal, CKSEL is not.** `avr_fuse_risk()` returns three levels.
 Unprogramming SPIEN switches ISP off permanently — refused with no override.
 Selecting an external clock is *recoverable* (feed a square wave into XTAL1),

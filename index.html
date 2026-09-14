@@ -500,16 +500,14 @@ your board is detected, then drop your file. Nothing to install.</p>
   <p>Pico numbers are physical pins, counted from the corner nearest the USB
   socket. Board numbers are the package pins you can count on the board.</p>
 
-  <p><strong>Every cable runs straight across</strong> — Pico 4-7 to CPLD board
-  14-17, Pico 9-12 to AVR board 1-4, and Pico 14-17 down the odd row of the
-  AVR's JTAG header. All in order, no crossovers anywhere. If a jumper looks
-  diagonal, it's wrong.</p>
+  <p><strong>Every cable runs straight across</strong> &mdash; in order, no
+  crossovers. If a jumper looks diagonal, it's wrong.</p>
 
-  <p>There are three connectors and they never conflict, so you can leave a
-  CPLD board and an AVR board wired at the same time and just pick the mode
-  at the top of the page.</p>
+  <p>The three connectors never conflict, so you can leave a CPLD board and an
+  AVR board wired at the same time and just pick the mode at the top of the
+  page.</p>
 
-  <p><strong>MAX V CPLD</strong> — JTAG, 64-pin DIL:</p>
+  <p><strong>MAX V CPLD</strong> &mdash; JTAG, 64-pin DIL:</p>
 <pre class="wire">   Pico                        CPLD board
    ────────────                ──────────
    pin 4   GP2  ───── TMS ──▶  pin 14
@@ -518,7 +516,7 @@ your board is detected, then drop your file. Nothing to install.</p>
    pin 7   GP5  ◀──── TDO ───  pin 17
    pin 3   GND  ───── GND ───  GND</pre>
 
-  <p><strong>ATmega32A</strong> — ISP, 44-pin DIL:</p>
+  <p><strong>ATmega32A</strong> &mdash; ISP, 44-pin DIL:</p>
 <pre class="wire">   Pico                        AVR board
    ────────────                ─────────
    pin 9   GP6  ──── MOSI ──▶  pin 1   (PB5)
@@ -527,21 +525,15 @@ your board is detected, then drop your file. Nothing to install.</p>
    pin 12  GP9  ─── RESET ──▶  pin 4
    pin 8   GND  ───── GND ───  GND</pre>
 
-  <p>Most ATmega32A examples online use the DIP-40 pinout, where RESET is
-  pin 9. On the 44-pin DIL board it's pin 4 — the <code>PBn</code> names are
-  the same either way, so go by those if you're checking a datasheet.</p>
-
-  <p><strong>ATmega32A</strong> — JTAG, the 10-pin header on top of the board.
-  This is a <em>second, separate</em> JTAG connector on the Pico, so a CPLD
-  board and an AVR board can both stay plugged in — nothing gets swapped to
-  change target:</p>
+  <p><strong>ATmega32A</strong> &mdash; JTAG, the 10-pin header on top of the
+  board:</p>
 <pre class="wire">   Pico                        JTAG header      ATmega32A
    ────────────                ───────────      ─────────
    pin 14  GP10 ───── TCK ──▶  pin 1            PC2
    pin 15  GP11 ◀──── TDO ───  pin 3            PC4
    pin 16  GP12 ───── TMS ──▶  pin 5            PC3
    pin 17  GP13 ───── TDI ──▶  pin 9            PC5
-   pin 18  GND  ───── GND ───  pin 2 or 10
+   pin 18  GND  ───── GND ───  pin 2
 
    Looking at the header, pin 1 marked:
 
@@ -551,33 +543,19 @@ your board is detected, then drop your file. Nothing to install.</p>
        Vsup   7 ○ ○  8   nTRST
         TDI   9 ● ○ 10   GND</pre>
 
-  <p>All four signals are in the odd-numbered row, so Pico pins 14-17 run
-  straight down it in order and skip only pin 7. Four parallel jumpers, no
-  crossovers, one gap at the end. Use header pin 2 for ground if you are only
-  using one — it sits next to TCK and gives the clock the shortest return
-  path.</p>
+  <p>All four signals are in the header's odd-numbered row, so Pico 14-17 run
+  straight down it, skipping only pin 7. Leave every other header pin
+  unconnected.</p>
 
-  <p>Leave <code>VTref</code>, <code>Vsupply</code>, <code>nSRST</code> and
-  <code>nTRST</code> unconnected. The datasheet says programming needs nothing
-  but the four signals, and <code>Vsupply</code> in particular would try to
-  power your board from the Pico.</p>
-
-  <p>JTAG works only while the <strong>JTAGEN</strong> fuse is programmed,
-  which it is on a chip from the factory. The <em>PORTC 2-5 free</em> fuse
-  preset switches it off to free those four pins — a board set that way has to
-  be reached over ISP, and this page will say so if it happens.</p>
-
-  <p>Always connect ground between the programmer and your board — a shared
-  power supply isn't enough. Both boards must run at 3.3&nbsp;V; the Pico's
-  pins are not 5&nbsp;V tolerant.</p>
+  <p>Always connect ground between the programmer and your board &mdash; a
+  shared power supply isn't enough. Both boards must run at 3.3&nbsp;V; the
+  Pico's pins are not 5&nbsp;V tolerant.</p>
 
   <h3>Which CPLD do I have?</h3>
-  <p>The 5M40ZE64, 5M80ZE64 and 5M160ZE64 all report the same JTAG ID
-  (<code>0x020A50DD</code>) — MAX V doesn't encode density in its ID, and all three
-  share a package. Reading the ID confirms the board is powered and wired
-  correctly, but can't tell you which of the three you're holding. Your SVF
-  names its target device, so this page reads that and shows it before
-  programming. Check it matches the marking on your chip.</p>
+  <p>The 5M40ZE64, 5M80ZE64 and 5M160ZE64 all report the same JTAG ID, so
+  reading it confirms the board is powered and wired but can't tell you which
+  one you're holding. Your SVF names its target device &mdash; this page shows
+  it before programming, so check it matches the marking on your chip.</p>
 
   <h3>Making the files</h3>
   <p><strong>CPLD</strong> &mdash; tell Quartus to write an SVF alongside its
@@ -594,24 +572,14 @@ your board is detected, then drop your file. Nothing to install.</p>
     folder next to the <code>.pof</code>.</li>
   </ol>
   <p>That's a one-off setting &mdash; it's saved in the project, so after this
-  you just compile and the file is there. Drop that <code>.svf</code> onto this
-  page.</p>
-  <p>If you'd rather produce one by hand from an existing <code>.pof</code>,
-  <code>quartus_cpf</code> does the same job from the <strong>Quartus Prime
-  Command Prompt</strong>:<br>
-  <code>quartus_cpf -c -q 12.0MHz -g 3.3 -n p design.pof design.svf</code></p>
-  <p>The <code>-q</code> value sets the clock speed recorded in the file, which
-  the checkbox method leaves at its default. Either way this programmer never
-  runs faster than the file declares, so a lower figure only makes programming
-  slower &mdash; it can't under-run a flash write and corrupt the chip.</p>
+  you just compile and the file is there.</p>
+
   <p><strong>AVR</strong> &mdash; use the <code>.hex</code> your compiler or IDE
-  produces. In Microchip Studio it's under <code>Debug\</code> or
-  <code>Release\</code>; with avr-gcc and a Makefile it's whatever your
-  <code>avr-objcopy</code> step writes. Drop the <code>.hex</code>, not the
-  <code>.elf</code>.</p>
+  produces, not the <code>.elf</code>. In Microchip Studio it's under
+  <code>Debug\</code> or <code>Release\</code>.</p>
+
   <p>Programming erases the chip first, so whatever was on the board before is
-  replaced. That's normal &mdash; keep your source, not the board, as the copy
-  that matters.</p>
+  replaced. Keep your source, not the board, as the copy that matters.</p>
 
   <h3>Checking a board without changing it</h3>
   <p>Tick <strong>Verify only</strong> before dropping a <code>.hex</code> and the
@@ -620,46 +588,27 @@ your board is detected, then drop your file. Nothing to install.</p>
   board you don't want to disturb.</p>
 
   <h3>ISP or JTAG?</h3>
-  <p>The ATmega32A can be programmed either way, and they reach the same flash.
-  Pick whichever cable is easier to attach: the JTAG header on top of the board
-  is usually the one you can get at. Each has its own connector on the Pico, so
-  you can wire both and switch modes here without touching anything.</p>
-  <p>JTAG also needs neither the reset nor the clock pin, so it still works on a
+  <p>Either works and both reach the same flash, so pick whichever cable is
+  easier to attach &mdash; usually the JTAG header on top of the board. Each
+  has its own connector on the Pico, so you can wire both and switch modes
+  here without touching anything.</p>
+  <p>JTAG needs neither the reset nor the clock pin, so it still works on a
   board whose clock fuses ask for a crystal that isn't fitted &mdash; the usual
-  way one of these ends up looking dead. Over ISP that board is silent until you
-  feed a signal into its XTAL1 pin.</p>
-  <p>Underneath they are quite different. ISP is a driver in the programmer's
-  firmware. JTAG is not &mdash; this page turns your <code>.hex</code> into an
-  SVF, the same format the CPLD boards use, and the programmer just plays it
-  back. That is why the JTAG mode reads an <code>IDCODE</code> where the ISP
-  mode reads a signature, and why the file being sent is a few hundred KB
-  rather than the size of your program.</p>
-  <p>Two things only ISP can do: read the fuses back, and reach a board whose
-  JTAGEN fuse has been switched off. An SVF can check a value it was given but
-  never report one, so the fuse panel is an ISP feature.</p>
+  way one of these ends up looking dead.</p>
+  <p>The fuse panel is ISP-only: over JTAG the programmer can set fuses but
+  can't read them back.</p>
 
   <h3>Fuses</h3>
   <p>Your board ships set up correctly, so for normal coursework you can ignore
-  this. If you need to change the clock speed or free up PORTC, switch to the
-  <strong>ISP</strong> mode &mdash; the fuse panel appears once an AVR is
-  detected there.</p>
-  <p>The presets cover the settings you're likely to want &mdash; clock speed, and
-  freeing PORTC 2-5 by switching off the chip's on-board debug interface. All of
-  them keep ISP enabled, so none can lock you out.</p>
-  <p>One of them does switch JTAG off, though: <em>PORTC 2-5 free</em> is exactly
-  the fuse that frees those pins by disabling the JTAG interface. Apply it and
-  the JTAG mode stops working on that board until you set the fuses back over
-  ISP. Nothing is lost &mdash; ISP still reaches it &mdash; but it is worth
-  knowing before you pick it.</p>
-  <p>If a board does stop responding after a fuse change, it's usually
-  recoverable. A wrong clock setting means the chip has no clock &mdash; feed a
-  slow square wave into its XTAL1 pin and it programs again. The one setting
-  that genuinely can't be undone from here is the serial programming fuse
-  (SPIEN); this programmer refuses to write it, but other tools will let you,
-  and recovery afterwards needs specialist equipment. Get in touch rather than
-  buying a replacement.</p>
-  <p>Changed the clock? Update <code>F_CPU</code> in your code to match, or your
-  delays and serial baud rate will be wrong.</p>
+  this. To change the clock speed or free up PORTC, switch to <strong>ISP</strong>
+  mode &mdash; the fuse panel appears once an AVR is detected.</p>
+  <p>Every preset keeps ISP enabled, so none can lock you out. One of them,
+  <em>PORTC 2-5 free</em>, does switch JTAG off &mdash; that's exactly what
+  frees those pins. ISP still reaches the board afterwards.</p>
+  <p>If a board stops responding after a fuse change it's usually recoverable:
+  a wrong clock setting can still be programmed over JTAG, or by feeding a slow
+  square wave into the chip's XTAL1 pin. Get in touch rather than buying a
+  replacement.</p>
 </div>
 
 </div>
@@ -1332,9 +1281,11 @@ function parseCpldId(line) {
 function parseAvrId(line) {
   if (!line.startsWith('SIG')) return null;
   const p = line.split(' ');
-  /* Strip the trailing retries= field: it is read separately for the
-     weak-connection warning and must not leak into the device name. */
-  const name = p.slice(2).join(' ').replace(/\s*retries=\d+\s*$/, '');
+  /* Strip the trailing diagnostic field: it is read separately for the
+     weak-connection warning and must not leak into the device name.
+     retries= is what firmware before the sck= change reported. */
+  const name = p.slice(2).join(' ')
+                .replace(/\s*(?:sck=\d+kHz|retries=\d+)\s*$/, '');
   return { id: p[1], name: name };
 }
 
@@ -1562,16 +1513,28 @@ async function readId() {
     $('st2b').innerHTML = '<strong>' + info.name + '</strong><br><code>' +
       info.id + '</code>';
 
-    /* The firmware reports how much retrying detection needed. A board
-     * that only reads after several attempts will usually fail during
-     * programming too, so say so now rather than after a failed flash. */
-    const rt = r.match(/retries=(\d+)/);
-    if (rt && +rt[1] > 0) {
+    /* Warn on the SCK the link settled on, not on how many rungs it took
+       to get there.
+
+       ISP needs SCK below a quarter of the chip's clock, and a factory
+       ATmega32A runs from its 1 MHz internal RC — so it can never use the
+       fastest rung and always drops to ~100 kHz. That is the chip working
+       exactly as specified, and the old test (any fallback at all) called
+       every brand-new board a weak connection and sent students off
+       shortening wires that were fine.
+
+       Below ~50 kHz is a different matter: no ATmega32A clock option
+       requires going that slow, so getting there means the link, not the
+       part. */
+    const sck = r.match(/sck=(\d+)kHz/);
+    const slow = sck ? (+sck[1] < 50)
+                     : (r.match(/retries=(\d+)/) || [])[1] > 1;
+    if (slow) {
       verdict('warn', 'Weak connection',
-        'The chip answered, but only after <strong>' + rt[1] + '</strong> ' +
-        'retr' + (+rt[1] === 1 ? 'y' : 'ies') + '. Programming may fail. ' +
-        'Shorten your jumper wires and check the ground connection between ' +
-        'the programmer and the board.');
+        'The chip answered, but only with the link slowed right down' +
+        (sck ? ' (<strong>' + sck[1] + ' kHz</strong>)' : '') +
+        '. Programming may fail. Shorten your jumper wires and check the ' +
+        'ground connection between the programmer and the board.');
     }
     stage(2, true); stage(3, true);
     setDropEnabled(true);

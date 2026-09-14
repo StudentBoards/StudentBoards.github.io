@@ -169,11 +169,27 @@ check("  sends every byte of the image", p.ser.written,
 # ---- Replies ---------------------------------------------------------
 print("\nReplies")
 check("  ATmega32A accepted",
-      quiet(m.show_signature, "SIG 0x1E9502 ATmega32/ATmega32A retries=0"), True)
+      quiet(m.show_signature, "SIG 0x1E9502 ATmega32/ATmega32A sck=492kHz"), True)
 check("  another AVR refused",
-      quiet(m.show_signature, "SIG 0x1E9403 unknown AVR retries=0"), False)
+      quiet(m.show_signature, "SIG 0x1E9403 unknown AVR sck=492kHz"), False)
 check("  absent target refused",
       quiet(m.show_signature, "ERR NO_TARGET after 3 attempts"), False)
+
+# ISP needs SCK below a quarter of the chip's clock, so a factory
+# ATmega32A on its 1 MHz internal RC settles at ~100 kHz. That must NOT
+# be reported as a weak link: it is the part working exactly as specified,
+# and the old rule (any fallback at all) accused every new board.
+def marginal(name, reply, expect):
+    buf = io.StringIO()
+    with contextlib.redirect_stdout(buf), contextlib.redirect_stderr(io.StringIO()):
+        m.show_signature(reply)
+    return check(name, "shorter wires" in buf.getvalue(), expect)
+
+sig = "SIG 0x1E9502 ATmega32/ATmega32A sck=%dkHz"
+marginal("  492 kHz is not marginal", sig % 492, False)
+marginal("  99 kHz (1 MHz part) is not marginal", sig % 99, False)
+marginal("  24 kHz is marginal", sig % 24, True)
+marginal("  9 kHz is marginal", sig % 9, True)
 check("  fuses decoded",
       quiet(m.show_fuses, "FUSES lfuse=0xE1 hfuse=0x99 lock=0xFF risk=fine"),
       (0xE1, 0x99))

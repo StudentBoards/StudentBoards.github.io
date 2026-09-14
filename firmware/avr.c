@@ -130,6 +130,37 @@ static uint8_t isp_cmd4(uint8_t a, uint8_t b, uint8_t c, uint8_t d)
 #define AVR_WAIT_FLASH_MS  10    /* tWD_FLASH 4.5 ms */
 #define AVR_WAIT_ERASE_MS  20    /* tWD_ERASE 9.0 ms */
 
+/*
+ * Fixed per-bit cost of spi_byte() beyond its two busy_wait_us() calls:
+ * the GPIO writes and loop overhead.
+ *
+ * Measured, not estimated: a 24576-byte bulk flash read (786,432 SCK
+ * cycles) took 1594 ms at the 1 us rung, i.e. 493 kHz, so the period is
+ * 2028 ns against 2000 ns of busy_wait. Only significant at that rung —
+ * by 5 us it is 0.3% of the period.
+ */
+#define AVR_SCK_OVERHEAD_NS  30
+
+/*
+ * Approximate SCK frequency at the current delay setting.
+ *
+ * One bit costs two busy_wait_us() calls plus the GPIO writes around
+ * them, so the period is 2 x delay plus a small fixed overhead. That
+ * overhead was measured on this build rather than assumed — see
+ * AVR_SCK_OVERHEAD_NS — and it only matters at the fastest rung, where
+ * it is about 3% of the period.
+ *
+ * Reported to the host because "which rung did the ladder settle on" is
+ * the single most useful thing to know about an ISP link, and a bare
+ * retry count cannot distinguish a 1 MHz chip doing exactly what it
+ * should from a marginal connection.
+ */
+uint32_t avr_sck_khz(void)
+{
+    uint32_t period_ns = 2000u * avr_sck_delay_us + AVR_SCK_OVERHEAD_NS;
+    return 1000000u / period_ns;
+}
+
 avr_result_t avr_isp_enter(void)
 {
     /*

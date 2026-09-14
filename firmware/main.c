@@ -410,12 +410,19 @@ static void cmd_avr_id(void)
 
         if (r == AVR_OK) {
             const char *name = avr_part_name(sig);
-            /* "retries" counts extra effort, so 0 means it read cleanly
-             * first time at full speed. */
-            printf("SIG 0x%02X%02X%02X %s retries=%d\n",
+            /*
+             * Report the SCK the ladder settled on, not a retry count.
+             * They are not the same question. A factory ATmega32A runs
+             * from its 1 MHz internal RC, which caps SCK at 250 kHz, so
+             * it *always* fails the fastest rung and lands on the next
+             * one — entirely normal, and indistinguishable from "one
+             * retry" caused by bad wiring. Saying 100 kHz instead lets
+             * the host compare against what the chip's clock allows.
+             */
+            printf("SIG 0x%02X%02X%02X %s sck=%lukHz\n",
                    sig[0], sig[1], sig[2],
                    name ? name : "unknown AVR",
-                   (cycle - 1) * 4 + (used - 1));
+                   (unsigned long)avr_sck_khz());
             return;
         }
         sleep_ms(50);
@@ -658,9 +665,12 @@ static void cmd_avr_verify(uint32_t total)
         return;
     }
 
-    printf("ERR MISMATCH %lu of %lu bytes differ, first at 0x%04lX\n",
+    /* Timed even when it fails: a verify that mismatches is still a full
+     * pass over the flash, and how long that took is what tells you the
+     * SCK rate the link settled on. */
+    printf("ERR MISMATCH %lu of %lu bytes differ, first at 0x%04lX ms=%lld\n",
            (unsigned long)diffs, (unsigned long)total,
-           (unsigned long)first_bad);
+           (unsigned long)first_bad, (long long)ms);
     led_mode = LED_FAIL;
 }
 
