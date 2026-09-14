@@ -500,8 +500,8 @@ your board is detected, then drop your file. Nothing to install.</p>
   <p>Pico numbers are physical pins, counted from the corner nearest the USB
   socket. Board numbers are the package pins you can count on the board.</p>
 
-  <p><strong>Every cable runs straight across</strong> &mdash; in order, no
-  crossovers. If a jumper looks diagonal, it's wrong.</p>
+  <p><strong>Cables run straight across</strong> &mdash; in order, no
+  crossovers. The one exception is the CPLD's 10-pin header, below.</p>
 
   <p>The three connectors never conflict, so you can leave a CPLD board and an
   AVR board wired at the same time and just pick the mode at the top of the
@@ -515,6 +515,29 @@ your board is detected, then drop your file. Nothing to install.</p>
    pin 6   GP4  ───── TCK ──▶  pin 16
    pin 7   GP5  ◀──── TDO ───  pin 17
    pin 3   GND  ───── GND ───  GND</pre>
+
+  <p>If your CPLD board has a <strong>10-pin USB&#8209;Blaster header</strong>
+  instead, use the same four Pico pins &mdash; but the header puts the signals
+  in a different order, so this is the one cable you count out rather than run
+  straight across:</p>
+<pre class="wire">   Pico                        USB-Blaster header
+   ────────────                ──────────────────
+   pin 4   GP2  ───── TMS ──▶  pin 5
+   pin 5   GP3  ───── TDI ──▶  pin 9
+   pin 6   GP4  ───── TCK ──▶  pin 1
+   pin 7   GP5  ◀──── TDO ───  pin 3
+   pin 3   GND  ───── GND ───  pin 2
+
+   Looking at the header, pin 1 marked:
+
+        TCK   1 ● ○  2   GND
+        TDO   3 ● ○  4   VCC
+        TMS   5 ● ○  6   ──
+         ──   7 ○ ○  8   ──
+        TDI   9 ● ○ 10   GND</pre>
+
+  <p>Leave the rest unconnected. Pin 4 carries your board's own supply &mdash;
+  it must not go to the Pico.</p>
 
   <p><strong>ATmega32A</strong> &mdash; ISP, 44-pin DIL:</p>
 <pre class="wire">   Pico                        AVR board
@@ -1480,7 +1503,10 @@ async function readId() {
           'to use PC2-PC5 as ordinary pins turns JTAG off once it runs. Hold the ' +
           "board's RESET low while programming, or use ISP</li>"
         : isCpld
-        ? '<li><strong>TDI and TDO swapped</strong> — the easiest pair to get backwards</li>'
+        ? '<li><strong>TDI and TDO swapped</strong> — the easiest pair to get backwards</li>' +
+          '<li><strong>Using the 10-pin header?</strong> Its signals are not in ' +
+          'the same order as the DIL pins — Pico 4,5,6,7 go to header ' +
+          '5,&nbsp;9,&nbsp;1,&nbsp;3</li>'
         : '<li><strong>MOSI and MISO swapped</strong> — the easiest pair to get backwards</li>' +
           '<li><strong>RESET not connected</strong> — ISP cannot start without it</li>') +
       '<li><strong>Board power</strong> — the board needs its own supply</li>' +
