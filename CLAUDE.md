@@ -385,6 +385,28 @@ JTAG. The page reads the target device from the SVF header comment instead
 (`!Device #1: 5M80Z`). Do not add code claiming to detect which part is
 fitted — it cannot be done.
 
+**The Altera and Atmel 10-pin JTAG headers are pin-compatible on the four
+signals that matter.** Both put TCK on 1, TDO on 3, TMS on 5, TDI on 9, with
+grounds on 2 and 10. They differ only on pins we never connect: 4 is
+VCC(TRGT) on Altera and VTref on Atmel, and 6/7/8 are unused on Altera
+against nSRST/Vsupply/nTRST on Atmel. Verified against the USB-Blaster user
+guide and the ByteBlaster II pinout, not assumed from the shape.
+
+That means one cable physically fits both, and it is why a CPLD board —
+they all carry the header — could in principle plug into the GP10-13
+connector, which is already ordered TCK/TDO/TMS/TDI for exactly this
+layout. **It deliberately does
+not.** A CPLD stays on GP2-7 so that CPLD mode keeps selecting the CPLD
+connector with no auto-detection, no port renaming and no firmware change —
+the cost being that this one cable (Pico 4,5,6,7 to header 5,9,1,3) is the
+only one in the project that is not straight across. If that trade is ever
+revisited, the alternatives considered were: auto-falling back to the
+header connector in CPLD mode, or renaming the ports by connector
+(DIL/HEADER) rather than by device.
+
+Pin 4 must never be wired to the Pico on either header: it is the target's
+own supply, not something to drive.
+
 **The AVR's 10-pin JTAG header does NOT run straight across.** It is the
 standard 2x5 Atmel pinout, which interleaves grounds between signals: TCK
 is pin 1, TDO pin 3, TMS pin 5, TDI pin 9, grounds on 2 and 10. This is the

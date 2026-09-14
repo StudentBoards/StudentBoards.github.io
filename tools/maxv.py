@@ -30,6 +30,29 @@ package pins:
 
 The four signal wires run straight across, in order, with no crossovers.
 
+The board also carries a 10-pin USB-Blaster header, on those same four
+Pico pins. It orders its signals differently, so this one is not straight
+across:
+
+    Pico phys  GPIO         USB-Blaster header
+    ---------  ----         ------------------
+        4      GP2    ->    pin 5   TMS
+        5      GP3    ->    pin 9   TDI
+        6      GP4    ->    pin 1   TCK
+        7      GP5    <-    pin 3   TDO
+        3      GND    --    pin 2   GND
+
+    2x5 header, pin 1 marked:
+
+        TCK   1 * *  2  GND
+        TDO   3 * *  4  VCC
+        TMS   5 * *  6  --
+         --   7 * *  8  --
+        TDI   9 * * 10  GND
+
+Leave the rest unconnected. Pin 4 carries the target's own supply and
+must not be connected to the Pico.
+
 Pico pins 14-17 are a second JTAG connector, for an ATmega32A's 10-pin
 header (see avr.py --jtag). Both boards can stay wired at once; this
 script claims the CPLD connector on connect, so it does not matter which
