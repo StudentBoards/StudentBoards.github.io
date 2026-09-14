@@ -690,22 +690,17 @@ def show_signature(reply):
               file=sys.stderr)
         return False
 
-    # The firmware reports how much extra effort the read took. Zero means
-    # it read cleanly at full speed; a high count means the board works but
-    # is marginal — and a marginal board is the one whose programming fails
-    # later, so it is worth saying so while things still look fine.
-    for tok in reply.split():
-        if tok.startswith("retries="):
-            try:
-                n = int(tok.split("=")[1])
-            except ValueError:
-                break
-            if n >= 4:
-                print("\nNote: the signature only read back after backing the\n"
-                      "clock right off. The chip is fine, but the link is\n"
-                      "marginal — shorter wires and a solid ground will make\n"
-                      "programming more reliable.")
-            break
+    # The firmware reports the SCK the link settled on. ISP needs SCK below
+    # a quarter of the chip's clock, so a factory ATmega32A on its 1 MHz
+    # internal RC legitimately runs at ~100 kHz — that is the part working
+    # as specified, not a bad connection. No clock option on this part
+    # needs less than 50 kHz, so going below that means the link.
+    m = re.search(r"sck=(\d+)kHz", reply)
+    if m and int(m.group(1)) < 50:
+        print(f"\nNote: the link only read back at {m.group(1)} kHz, which is\n"
+              "slower than any clock setting on this part requires. The chip\n"
+              "is fine, but shorter wires and a solid ground will make\n"
+              "programming more reliable.")
     return True
 
 

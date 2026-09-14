@@ -287,7 +287,7 @@ older than 1.1 omits it, and the host then assumes the smaller limit.
 | `INFO` | `INFO version= pins= max_shift_bits= max_stmt_bytes= …` |
 | `ID` | `IDCODE 0x… <name>` / `ERR NO_TARGET` |
 | `SVF <bytes>` | `READY`, then raw bytes, then `DONE` / `ERR` |
-| `AVRID` | `SIG 0x…… <name> retries=<n>` / `ERR NO_TARGET` |
+| `AVRID` | `SIG 0x…… <name> sck=<n>kHz` / `ERR NO_TARGET` |
 | `AVRFUSES` | `FUSES lfuse= hfuse= lock= risk=` |
 | `AVRFUSEW <l> <h> [CONFIRM]` | `FUSEOK …` / `ERR FUSE_FATAL` / `ERR FUSE_CONFIRM` |
 | `AVRFLASH <bytes>` | `READY`, then raw bytes, then `DONE` / `ERR` |

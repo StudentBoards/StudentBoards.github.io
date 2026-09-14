@@ -181,4 +181,7 @@ avr_result_t avr_verify(const uint8_t *data, uint32_t len,
 /* Per-edge delay in microseconds, set by avr_isp_enter(). */
 extern volatile uint32_t avr_sck_delay_us;
 
+/* Approximate SCK frequency for the delay currently set, in kHz. */
+uint32_t avr_sck_khz(void);
+
 #endif /* AVR_H */
