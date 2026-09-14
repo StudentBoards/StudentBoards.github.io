@@ -50,6 +50,39 @@ board itself.
 | 7 (GP5) | TDO | 17 |
 | 3 | GND | GND |
 
+The board also carries a **10-pin USB-Blaster header**, on those same four
+Pico pins. It orders its signals differently, so this cable is not straight
+across:
+
+```
+   Raspberry Pi Pico                  USB-Blaster header
+   ─────────────────────              ──────────────────
+   pin 4   GP2   ────────  TMS  ───▶  pin 5
+   pin 5   GP3   ────────  TDI  ───▶  pin 9
+   pin 6   GP4   ────────  TCK  ───▶  pin 1
+   pin 7   GP5   ◀───────  TDO  ────  pin 3
+   pin 3   GND   ────────  GND  ────  pin 2
+
+   Looking at the header, pin 1 marked:
+
+        TCK   1 ● ○  2   GND
+        TDO   3 ● ○  4   VCC
+        TMS   5 ● ○  6   ──
+         ──   7 ○ ○  8   ──
+        TDI   9 ● ○ 10   GND
+```
+
+| Pico pin | Signal | Header pin |
+|---|---|---|
+| 4 (GP2) | TMS | 5 |
+| 5 (GP3) | TDI | 9 |
+| 6 (GP4) | TCK | 1 |
+| 7 (GP5) | TDO | 3 |
+| 3 | GND | 2 or 10 |
+
+Leave the rest unconnected. Pin 4 carries the target's own supply and must
+not be connected to the Pico.
+
 **ATmega32A — ISP (44-pin DIL)**
 
 ```
@@ -139,10 +172,11 @@ Always connect ground between the programmer and your board — a shared power
 supply is not enough. Both boards must run at 3.3 V; the Pico's pins are not
 5 V tolerant.
 
-**Every cable runs straight across.** Pico pins 4-7 go to CPLD board pins
-14-17 in order, Pico pins 9-12 go to AVR board pins 1-4 in order, and Pico
-pins 14-17 go down the odd-numbered row of the AVR's JTAG header in order.
-No crossovers anywhere — if a jumper is diagonal in your photo, it is wrong.
+**Cables run straight across.** Pico pins 4-7 go to CPLD board pins 14-17
+in order, Pico pins 9-12 go to AVR board pins 1-4 in order, and Pico pins
+14-17 go down the odd-numbered row of the AVR's JTAG header in order. The
+one exception is the CPLD's USB-Blaster header, which orders its signals
+differently and has to be counted out.
 
 ### Making the files
 
